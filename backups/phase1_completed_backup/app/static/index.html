@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Company Brain — Enterprise Onboarding & Ingestion Engine</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Header Navbar -->
+    <header class="navbar">
+      <div class="brand">
+        <div class="brand-logo">🧠</div>
+        <div class="brand-info">
+          <h1>Company Brain</h1>
+          <span class="tagline">Enterprise Knowledge Ingestion Engine</span>
+        </div>
+      </div>
+
+      <div class="step-indicator">
+        <div class="step active" id="step-nav-1"><span class="num">1</span> Auth</div>
+        <div class="step-line"></div>
+        <div class="step" id="step-nav-2"><span class="num">2</span> Connect Apps</div>
+        <div class="step-line"></div>
+        <div class="step" id="step-nav-3"><span class="num">3</span> Sync Engine</div>
+        <div class="step-line"></div>
+        <div class="step" id="step-nav-4"><span class="num">4</span> Live Dashboard</div>
+      </div>
+
+      <div class="tenant-badge hidden" id="tenant-badge">
+        <span class="dot"></span>
+        <span id="badge-company-name">Acme Corp</span>
+        <span class="badge-tenant-id" id="badge-tenant-id">tenant_uuid</span>
+      </div>
+    </header>
+
+    <!-- Main Content Body -->
+    <main class="main-content">
+      
+      <!-- STEP 1: AUTHENTICATION (Signup / Login) -->
+      <section class="card-panel view-section" id="view-step-1">
+        <div class="panel-header">
+          <h2>Step 1: Enterprise Account Signup & Tenant Provisioning</h2>
+          <p>Create your enterprise workspace account. Automatically provisions an isolated multi-tenant <code>tenant_id</code> and RLS policy boundaries.</p>
+        </div>
+
+        <div class="auth-tabs">
+          <button class="tab-btn active" onclick="switchAuthTab('signup')">Sign Up New Enterprise</button>
+          <button class="tab-btn" onclick="switchAuthTab('login')">Sign In</button>
+        </div>
+
+        <!-- Signup Form -->
+        <form id="signup-form" class="auth-form">
+          <div class="form-grid">
+            <div class="form-group">
+              <label>Company Name</label>
+              <input type="text" id="signup-company" placeholder="e.g. Acme Corporation" required value="Acme Corp">
+            </div>
+            <div class="form-group">
+              <label>Company Domain</label>
+              <input type="text" id="signup-domain" placeholder="e.g. acme.com" required value="acme.com">
+            </div>
+            <div class="form-group">
+              <label>Work Email</label>
+              <input type="email" id="signup-email" placeholder="admin@acme.com" required value="admin@acme.com">
+            </div>
+            <div class="form-group">
+              <label>Password</label>
+              <input type="password" id="signup-password" placeholder="••••••••••••" required value="SecretPass123!">
+            </div>
+          </div>
+          <button type="submit" class="btn btn-primary glow-btn">Provision Enterprise Tenant & Sign Up →</button>
+        </form>
+
+        <!-- Login Form -->
+        <form id="login-form" class="auth-form hidden">
+          <div class="form-grid">
+            <div class="form-group">
+              <label>Work Email</label>
+              <input type="email" id="login-email" placeholder="admin@acme.com" required>
+            </div>
+            <div class="form-group">
+              <label>Password</label>
+              <input type="password" id="login-password" placeholder="••••••••••••" required>
+            </div>
+          </div>
+          <button type="submit" class="btn btn-primary glow-btn">Sign In to Dashboard →</button>
+        </form>
+      </section>
+
+      <!-- STEP 2: APP SELECTION HUB -->
+      <section class="card-panel view-section hidden" id="view-step-2">
+        <div class="panel-header">
+          <h2>Step 2: Workplace & Software Application Connection Hub</h2>
+          <p>Select which workplace apps to connect. Tokens are encrypted using AES-256-GCM and bound strictly to your <code>tenant_id</code>.</p>
+        </div>
+
+        <div class="connectors-grid" id="connectors-grid">
+          <!-- Dynamically populated via JS -->
+        </div>
+
+        <div class="panel-footer">
+          <button class="btn btn-secondary" onclick="goToStep(1)">← Back to Auth</button>
+          <button class="btn btn-success glow-btn" id="btn-proceed-to-sync" onclick="goToStep(3)">Proceed to Data Sync Engine →</button>
+        </div>
+      </section>
+
+      <!-- STEP 3: START INGESTION ENGINE -->
+      <section class="card-panel view-section hidden" id="view-step-3">
+        <div class="panel-header">
+          <h2>Step 3: Trigger Ingestion & Data Compression Engine</h2>
+          <p>Kick off automated historical backfill & real-time webhook sync across all connected enterprise apps.</p>
+        </div>
+
+        <div class="sync-summary-box">
+          <div class="summary-item">
+            <span class="label">Connected Tenant</span>
+            <span class="val" id="sync-company-display">Acme Corp</span>
+          </div>
+          <div class="summary-item">
+            <span class="label">Target Cloud Storage</span>
+            <span class="val badge-aws">AWS S3 (ap-south-1)</span>
+          </div>
+          <div class="summary-item">
+            <span class="label">Payload Compression</span>
+            <span class="val badge-zstd">Zstandard (.json.zst)</span>
+          </div>
+          <div class="summary-item">
+            <span class="label">Database Indexing</span>
+            <span class="val badge-postgres">AWS RDS PostgreSQL + RLS</span>
+          </div>
+        </div>
+
+        <div class="sync-action-area">
+          <button class="btn btn-huge btn-primary glow-btn" id="btn-start-sync" onclick="startDataIngestion()">
+            🚀 Start Data Sync & Compression Pipeline
+          </button>
+        </div>
+      </section>
+
+      <!-- STEP 4: LIVE DASHBOARD TELEMETRY -->
+      <section class="card-panel view-section hidden" id="view-step-4">
+        <div class="panel-header">
+          <h2>Step 4: Live Data Sync Telemetry & Storage Dashboard</h2>
+          <p>Real-time telemetry tracking extracted documents, compressed S3 bytes, and PostgreSQL database pointers.</p>
+        </div>
+
+        <!-- Telemetry Stats Cards -->
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-icon">📄</div>
+            <div class="stat-content">
+              <span class="stat-val" id="stat-total-docs">0</span>
+              <span class="stat-label">Total Documents Synced</span>
+            </div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon">☁️</div>
+            <div class="stat-content">
+              <span class="stat-val" id="stat-s3-bytes">0 B</span>
+              <span class="stat-label">AWS S3 Compressed Data</span>
+            </div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon">🔒</div>
+            <div class="stat-content">
+              <span class="stat-val text-emerald">Active</span>
+              <span class="stat-label">PostgreSQL RLS Security</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- App Status Breakdown & Live Log -->
+        <div class="telemetry-grid">
+          <div class="telemetry-panel">
+            <h3>App Sync Status Breakdown</h3>
+            <div id="apps-status-list" class="apps-status-list">
+              <!-- Dynamically populated -->
+            </div>
+          </div>
+
+          <div class="telemetry-panel">
+            <h3>Live Ingestion Activity Log</h3>
+            <div id="activity-log-stream" class="activity-log-stream">
+              <div class="log-line">Waiting for sync pipeline to start...</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
