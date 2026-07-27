@@ -9,10 +9,11 @@ from app.api.auth import router as auth_router
 from app.api.connectors_router import router as connectors_router
 from app.api.ingestion_router import router as ingestion_router
 from app.api.webhooks import router as webhooks_router
+from app.api.graph_api import router as graph_router
 
 app = FastAPI(
     title=settings.APP_NAME,
-    description="Enterprise Data Ingestion & Storage Engine — Web UI, APIs, and Live Webhooks",
+    description="Enterprise Data Ingestion, Retrieval & Knowledge Intelligence Engine",
     version="1.0.0",
 )
 
@@ -33,6 +34,7 @@ app.include_router(auth_router)
 app.include_router(connectors_router)
 app.include_router(ingestion_router)
 app.include_router(webhooks_router)
+app.include_router(graph_router)
 
 # Serve Static UI Frontend
 static_dir = os.path.join(os.path.dirname(__file__), "static")

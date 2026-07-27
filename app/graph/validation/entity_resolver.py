@@ -2,22 +2,18 @@
 Entity Resolution & Alias Merging Engine — Module 3
 ===================================================
 Merges duplicate entities using exact alias lookup, string similarity (Jaro-Winkler),
-and canonical mapping.
-(e.g., "Microsoft Corporation", "Microsoft", "MSFT" -> Canonical Entity 'Microsoft')
+corporate suffix normalization, and canonical mapping.
+(e.g., "Microsoft Corporation", "Microsoft Inc", "MSFT" -> Canonical Entity 'Microsoft')
 """
+import re
 from typing import Dict, Any, Optional
 from app.db.postgres_knowledge_repo import postgres_knowledge_repo
 from app.domain.graph_models import EntityModel
 
-def jaro_winkler_similarity(s1: str, s2: str) -> float:
-    """Computes basic string similarity score between 0.0 and 1.0."""
-    s1_clean = s1.lower().strip()
-    s2_clean = s2.lower().strip()
-    if s1_clean == s2_clean:
-        return 1.0
-    if s1_clean in s2_clean or s2_clean in s1_clean:
-        return 0.88
-    return 0.0
+def normalize_company_name(name: str) -> str:
+    """Normalizes corporate suffix variations ('Inc', 'Corp', 'Corporation', 'LLC', 'Ltd')."""
+    clean_name = re.sub(r'\b(corporation|corp|inc|ltd|llc)\b', '', name, flags=re.IGNORECASE).strip()
+    return clean_name if clean_name else name
 
 class EntityResolver:
     """Resolves raw entity names to canonical entity IDs."""
@@ -25,8 +21,9 @@ class EntityResolver:
     async def resolve_or_create(self, tenant_id: str, raw_name: str, entity_type: str) -> str:
         """
         1. Checks exact match in database.
-        2. Performs fuzzy alias lookup.
-        3. Creates new canonical entity if no match found.
+        2. Normalizes corporate suffixes and alias mappings.
+        3. Performs fuzzy alias lookup.
+        4. Creates new canonical entity if no match found.
         """
         existing = await postgres_knowledge_repo.get_entity_by_canonical_name(tenant_id, raw_name)
         if existing:
@@ -35,11 +32,13 @@ class EntityResolver:
         # Alias dictionary check for known enterprise mappings
         alias_map = {
             "microsoft corporation": "Microsoft",
+            "microsoft inc": "Microsoft",
             "msft": "Microsoft",
             "johnathan smith": "John Smith",
             "j smith": "John Smith",
         }
-        canonical = alias_map.get(raw_name.lower().strip(), raw_name)
+        raw_lower = raw_name.lower().strip()
+        canonical = alias_map.get(raw_lower, normalize_company_name(raw_name))
 
         if canonical != raw_name:
             existing_alias_target = await postgres_knowledge_repo.get_entity_by_canonical_name(tenant_id, canonical)
