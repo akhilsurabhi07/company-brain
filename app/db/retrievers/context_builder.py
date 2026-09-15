@@ -5,6 +5,8 @@ Sub-components of the modular Retrieval Orchestrator architecture.
 """
 from typing import List, Dict, Any, Optional
 from pydantic import BaseModel, Field
+from sqlalchemy import text
+from app.db.database import async_session_factory
 
 # Model for Explainable Retrieval Result
 class RetrievalResult(BaseModel):
@@ -25,9 +27,55 @@ class RetrievalResult(BaseModel):
     retrieval_reason: str = "matched by semantic vector similarity"
 
 class KeywordRetriever:
-    """Executes keyword full-text search fallback."""
+    """Executes real keyword full-text search over document_chunks.text_search_vector
+    (a Postgres tsvector GIN-indexed on text_content — see schema.sql). This is the
+    lexical/BM25-style half of hybrid retrieval: it catches exact terms, IDs, and names
+    (e.g. 'Spec #294') that near-duplicate documents can defeat under pure vector
+    similarity. Previously a hardcoded stub returning [] — hybrid ranking silently ran
+    vector-only. websearch_to_tsquery tolerates free-form natural-language queries
+    (unlike plainto_tsquery/to_tsquery, it won't raise on stray punctuation)."""
     async def retrieve(self, tenant_id: str, query_text: str, top_k: int = 5) -> List[Dict[str, Any]]:
-        return []
+        async with async_session_factory() as session:
+            await session.execute(text("SELECT set_config('app.current_tenant_id', :__tid, true)"), {"__tid": str(tenant_id)})
+
+            res = await session.execute(
+                text("""
+                    SELECT
+                        c.id AS chunk_id,
+                        c.document_id,
+                        ts_rank_cd(c.text_search_vector, websearch_to_tsquery('english', :query)) AS rank_score,
+                        c.heading,
+                        c.text_content,
+                        c.token_count,
+                        c.importance_score,
+                        c.parent_chunk_id,
+                        d.title AS document_title
+                    FROM document_chunks c
+                    JOIN documents d ON c.document_id = d.id
+                    WHERE c.tenant_id = :tenant_id
+                      AND c.text_search_vector @@ websearch_to_tsquery('english', :query)
+                    ORDER BY rank_score DESC
+                    LIMIT :top_k;
+                """),
+                {"tenant_id": tenant_id, "query": query_text, "top_k": top_k},
+            )
+
+            results = []
+            for row in res.fetchall():
+                results.append(
+                    {
+                        "chunk_id": row[0],
+                        "document_id": row[1],
+                        "similarity_score": round(float(row[2]), 4),
+                        "heading": row[3],
+                        "text_content": row[4],
+                        "token_count": row[5],
+                        "importance_score": float(row[6]),
+                        "parent_chunk_id": row[7],
+                        "document_title": row[8],
+                    }
+                )
+            return results
 
 class PermissionFilter:
     """Applies PostgreSQL Row-Level Security tenant isolation."""

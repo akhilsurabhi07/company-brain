@@ -22,7 +22,7 @@ class PostgresKnowledgeRepository:
         entity_id = entity.id or str(uuid.uuid4())
         async with async_session_factory() as session:
             async with session.begin():
-                await session.execute(text(f"SET LOCAL app.current_tenant_id = '{entity.tenant_id}'"))
+                await session.execute(text("SELECT set_config('app.current_tenant_id', :__tid, true)"), {"__tid": str(entity.tenant_id)})
                 await session.execute(
                     text("""
                         INSERT INTO graph_entities (id, tenant_id, entity_type, canonical_name, state, confidence_score, trust_score, attributes, governance_tags)
@@ -59,7 +59,7 @@ class PostgresKnowledgeRepository:
         """Retrieve entity by canonical name under tenant RLS and explicit tenant_id scoping."""
         async with async_session_factory() as session:
             async with session.begin():
-                await session.execute(text(f"SET LOCAL app.current_tenant_id = '{tenant_id}'"))
+                await session.execute(text("SELECT set_config('app.current_tenant_id', :__tid, true)"), {"__tid": str(tenant_id)})
                 res = await session.execute(
                     text("""
                         SELECT id, tenant_id, entity_type, canonical_name, state, confidence_score, trust_score, attributes 
@@ -87,7 +87,7 @@ class PostgresKnowledgeRepository:
         rel_id = rel.id or str(uuid.uuid4())
         async with async_session_factory() as session:
             async with session.begin():
-                await session.execute(text(f"SET LOCAL app.current_tenant_id = '{rel.tenant_id}'"))
+                await session.execute(text("SELECT set_config('app.current_tenant_id', :__tid, true)"), {"__tid": str(rel.tenant_id)})
                 await session.execute(
                     text("""
                         INSERT INTO graph_relationships (id, tenant_id, source_entity_id, target_entity_id, relation_type, causal_type, state, confidence_score, attributes)
@@ -127,7 +127,7 @@ class PostgresKnowledgeRepository:
         fact_id = fact.id or str(uuid.uuid4())
         async with async_session_factory() as session:
             async with session.begin():
-                await session.execute(text(f"SET LOCAL app.current_tenant_id = '{fact.tenant_id}'"))
+                await session.execute(text("SELECT set_config('app.current_tenant_id', :__tid, true)"), {"__tid": str(fact.tenant_id)})
                 await session.execute(
                     text("""
                         INSERT INTO graph_facts (id, tenant_id, fact_type, is_derived, metric_name, value, period, state, confidence_score, source_authority)
@@ -168,7 +168,7 @@ class PostgresKnowledgeRepository:
         conflict_id = conflict.id or str(uuid.uuid4())
         async with async_session_factory() as session:
             async with session.begin():
-                await session.execute(text(f"SET LOCAL app.current_tenant_id = '{conflict.tenant_id}'"))
+                await session.execute(text("SELECT set_config('app.current_tenant_id', :__tid, true)"), {"__tid": str(conflict.tenant_id)})
                 await session.execute(
                     text("""
                         INSERT INTO graph_conflicts (id, tenant_id, conflict_type, entity_id, description, evidence_a_json, evidence_b_json, severity, resolution_status)
@@ -193,7 +193,7 @@ class PostgresKnowledgeRepository:
         dec_id = decision.id or str(uuid.uuid4())
         async with async_session_factory() as session:
             async with session.begin():
-                await session.execute(text(f"SET LOCAL app.current_tenant_id = '{decision.tenant_id}'"))
+                await session.execute(text("SELECT set_config('app.current_tenant_id', :__tid, true)"), {"__tid": str(decision.tenant_id)})
                 await session.execute(
                     text("""
                         INSERT INTO graph_decisions (id, tenant_id, decision_title, owner_id, rationale, expected_outcome, actual_outcome, state)
@@ -217,7 +217,7 @@ class PostgresKnowledgeRepository:
         rec_id = rec.id or str(uuid.uuid4())
         async with async_session_factory() as session:
             async with session.begin():
-                await session.execute(text(f"SET LOCAL app.current_tenant_id = '{rec.tenant_id}'"))
+                await session.execute(text("SELECT set_config('app.current_tenant_id', :__tid, true)"), {"__tid": str(rec.tenant_id)})
                 await session.execute(
                     text("""
                         INSERT INTO graph_action_recommendations (id, tenant_id, action_type, target_entity_id, recommendation_text, priority, status)
@@ -234,5 +234,216 @@ class PostgresKnowledgeRepository:
                     }
                 )
         return rec_id
+
+    # ── Real read/aggregate queries (added 2026-08 to replace hardcoded fake
+    # health/impact numbers in app/api/graph_api.py with genuine DB state) ──
+
+    async def relationship_exists(self, tenant_id: str, source_entity_id: str, target_entity_id: str, relation_type: str) -> bool:
+        """Idempotency check so re-ingestion doesn't accumulate duplicate edges."""
+        async with async_session_factory() as session:
+            await session.execute(text("SELECT set_config('app.current_tenant_id', :tid, true)"), {"tid": tenant_id})
+            res = await session.execute(
+                text("""
+                    SELECT 1 FROM graph_relationships
+                    WHERE tenant_id = :tid AND source_entity_id = :src AND target_entity_id = :tgt AND relation_type = :rel
+                    LIMIT 1
+                """),
+                {"tid": tenant_id, "src": source_entity_id, "tgt": target_entity_id, "rel": relation_type},
+            )
+            return res.fetchone() is not None
+
+    async def count_entities(self, tenant_id: str) -> int:
+        async with async_session_factory() as session:
+            await session.execute(text("SELECT set_config('app.current_tenant_id', :tid, true)"), {"tid": tenant_id})
+            res = await session.execute(
+                text("SELECT COUNT(*) FROM graph_entities WHERE tenant_id = :tid AND is_current = TRUE"),
+                {"tid": tenant_id},
+            )
+            return int(res.scalar() or 0)
+
+    async def count_relationships(self, tenant_id: str) -> int:
+        async with async_session_factory() as session:
+            await session.execute(text("SELECT set_config('app.current_tenant_id', :tid, true)"), {"tid": tenant_id})
+            res = await session.execute(
+                text("SELECT COUNT(*) FROM graph_relationships WHERE tenant_id = :tid AND is_current = TRUE"),
+                {"tid": tenant_id},
+            )
+            return int(res.scalar() or 0)
+
+    async def count_orphan_entities(self, tenant_id: str, entity_type: str) -> int:
+        """Entities of a given type with zero relationships in either direction —
+        a real (if simple) proxy for 'orphan projects', etc."""
+        async with async_session_factory() as session:
+            await session.execute(text("SELECT set_config('app.current_tenant_id', :tid, true)"), {"tid": tenant_id})
+            res = await session.execute(
+                text("""
+                    SELECT COUNT(*) FROM graph_entities e
+                    WHERE e.tenant_id = :tid AND e.entity_type = :etype AND e.is_current = TRUE
+                      AND NOT EXISTS (
+                          SELECT 1 FROM graph_relationships r
+                          WHERE r.tenant_id = :tid AND (r.source_entity_id = e.id OR r.target_entity_id = e.id)
+                      )
+                """),
+                {"tid": tenant_id, "etype": entity_type},
+            )
+            return int(res.scalar() or 0)
+
+    async def count_active_conflicts(self, tenant_id: str) -> int:
+        async with async_session_factory() as session:
+            await session.execute(text("SELECT set_config('app.current_tenant_id', :tid, true)"), {"tid": tenant_id})
+            res = await session.execute(
+                text("SELECT COUNT(*) FROM graph_conflicts WHERE tenant_id = :tid AND resolution_status != 'resolved'"),
+                {"tid": tenant_id},
+            )
+            return int(res.scalar() or 0)
+
+    # ── Real read queries backing the Decisions/Risks sidebar panels
+    # (added 2026-08-22, Module 6B) — this data already existed and was
+    # already populated via create_decision()/save_conflict() above; it was
+    # simply never surfaced anywhere in the product before now. ──
+
+    async def list_decisions(self, tenant_id: str, limit: int = 50) -> List[Dict[str, Any]]:
+        async with async_session_factory() as session:
+            await session.execute(text("SELECT set_config('app.current_tenant_id', :tid, true)"), {"tid": tenant_id})
+            res = await session.execute(
+                text("""
+                    SELECT id, decision_title, rationale, expected_outcome, actual_outcome, state, created_at
+                    FROM graph_decisions WHERE tenant_id = :tid
+                    ORDER BY created_at DESC LIMIT :lim
+                """),
+                {"tid": tenant_id, "lim": limit},
+            )
+            return [dict(row._mapping) for row in res.fetchall()]
+
+    async def list_conflicts(self, tenant_id: str, limit: int = 50) -> List[Dict[str, Any]]:
+        async with async_session_factory() as session:
+            await session.execute(text("SELECT set_config('app.current_tenant_id', :tid, true)"), {"tid": tenant_id})
+            res = await session.execute(
+                text("""
+                    SELECT id, conflict_type, description, severity, resolution_status, created_at
+                    FROM graph_conflicts WHERE tenant_id = :tid
+                    ORDER BY
+                        CASE severity WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END,
+                        created_at DESC
+                    LIMIT :lim
+                """),
+                {"tid": tenant_id, "lim": limit},
+            )
+            return [dict(row._mapping) for row in res.fetchall()]
+
+    async def count_documents_without_relationships(self, tenant_id: str) -> int:
+        """Documents that were ingested but have no extracted graph relationships tied
+        to them yet — a real, honest proxy for 'knowledge gaps' (content sitting in the
+        vault that hasn't been turned into structured knowledge)."""
+        async with async_session_factory() as session:
+            await session.execute(text("SELECT set_config('app.current_tenant_id', :tid, true)"), {"tid": tenant_id})
+            res = await session.execute(
+                text("""
+                    SELECT COUNT(*) FROM documents d
+                    WHERE d.tenant_id = :tid
+                      AND NOT EXISTS (
+                          SELECT 1 FROM graph_relationship_sources s WHERE s.tenant_id = :tid AND s.document_id = d.id
+                      )
+                """),
+                {"tid": tenant_id},
+            )
+            return int(res.scalar() or 0)
+
+    async def compute_documentation_coverage_pct(self, tenant_id: str) -> float:
+        """Real % of ingested documents that actually have at least one chunk (i.e.
+        genuinely made it through the embedding pipeline, not just landed in storage)."""
+        async with async_session_factory() as session:
+            await session.execute(text("SELECT set_config('app.current_tenant_id', :tid, true)"), {"tid": tenant_id})
+            total = (await session.execute(text("SELECT COUNT(*) FROM documents WHERE tenant_id = :tid"), {"tid": tenant_id})).scalar() or 0
+            if total == 0:
+                return 0.0
+            with_chunks = (await session.execute(
+                text("SELECT COUNT(DISTINCT document_id) FROM document_chunks WHERE tenant_id = :tid"), {"tid": tenant_id}
+            )).scalar() or 0
+            return round(100.0 * with_chunks / total, 1)
+
+    async def compute_knowledge_freshness_pct(self, tenant_id: str, within_days: int = 30) -> float:
+        """Real % of documents ingested/updated within the freshness window."""
+        async with async_session_factory() as session:
+            await session.execute(text("SELECT set_config('app.current_tenant_id', :tid, true)"), {"tid": tenant_id})
+            total = (await session.execute(text("SELECT COUNT(*) FROM documents WHERE tenant_id = :tid"), {"tid": tenant_id})).scalar() or 0
+            if total == 0:
+                return 0.0
+            fresh = (await session.execute(
+                text(f"SELECT COUNT(*) FROM documents WHERE tenant_id = :tid AND ingested_at >= now() - interval '{int(within_days)} days'"),
+                {"tid": tenant_id},
+            )).scalar() or 0
+            return round(100.0 * fresh / total, 1)
+
+    async def get_relationships_for_entity_name(self, tenant_id: str, entity_name: str, max_hops: int = 1) -> List[Dict[str, Any]]:
+        """Real graph edges for a named entity — replaces the hardcoded sample_edges
+        previously fed to the impact analyzer regardless of tenant_id.
+
+        Real gap found via Module 4 inspection 2026-08-22: this (and the parallel,
+        never-wired-in app/db/postgres_graph_repo.py — same underlying tables,
+        duplicate access code) always did a single hop, no matter what depth a
+        caller asked for; there was no recursive expansion anywhere in the
+        codebase. "Multi-hop reasoning" was claimed by the Module 4 design but
+        never actually implemented. max_hops now genuinely walks the graph via a
+        bounded recursive CTE — default 1 keeps every existing caller's exact
+        prior behavior unchanged. Bounded by max_hops (small, e.g. 2-3) and a
+        final LIMIT, so a densely connected real graph can't blow up the result
+        set or the query cost; tenant-scoped and is_current-filtered throughout,
+        same as the 1-hop version.
+        """
+        if max_hops <= 1:
+            async with async_session_factory() as session:
+                await session.execute(text("SELECT set_config('app.current_tenant_id', :tid, true)"), {"tid": tenant_id})
+                res = await session.execute(
+                    text("""
+                        SELECT src.canonical_name, tgt.canonical_name, r.relation_type, 1 as hop
+                        FROM graph_relationships r
+                        JOIN graph_entities src ON src.id = r.source_entity_id
+                        JOIN graph_entities tgt ON tgt.id = r.target_entity_id
+                        WHERE r.tenant_id = :tid AND r.is_current = TRUE
+                          AND (src.canonical_name = :name OR tgt.canonical_name = :name)
+                    """),
+                    {"tid": tenant_id, "name": entity_name},
+                )
+                return [{"source": row[0], "target": row[1], "relation": row[2], "hop": row[3]} for row in res.fetchall()]
+
+        async with async_session_factory() as session:
+            await session.execute(text("SELECT set_config('app.current_tenant_id', :tid, true)"), {"tid": tenant_id})
+            res = await session.execute(
+                text("""
+                    WITH RECURSIVE graph_walk AS (
+                        SELECT r.source_entity_id AS src_id, r.target_entity_id AS tgt_id,
+                               src.canonical_name AS source, tgt.canonical_name AS target,
+                               r.relation_type, 1 AS hop
+                        FROM graph_relationships r
+                        JOIN graph_entities src ON src.id = r.source_entity_id
+                        JOIN graph_entities tgt ON tgt.id = r.target_entity_id
+                        WHERE r.tenant_id = :tid AND r.is_current = TRUE
+                          AND (src.canonical_name = :name OR tgt.canonical_name = :name)
+
+                        UNION ALL
+
+                        SELECT r.source_entity_id, r.target_entity_id,
+                               src.canonical_name, tgt.canonical_name,
+                               r.relation_type, gw.hop + 1
+                        FROM graph_relationships r
+                        JOIN graph_entities src ON src.id = r.source_entity_id
+                        JOIN graph_entities tgt ON tgt.id = r.target_entity_id
+                        JOIN graph_walk gw ON (
+                            r.source_entity_id IN (gw.src_id, gw.tgt_id)
+                            OR r.target_entity_id IN (gw.src_id, gw.tgt_id)
+                        )
+                        WHERE r.tenant_id = :tid AND r.is_current = TRUE AND gw.hop < :max_hops
+                    )
+                    SELECT DISTINCT source, target, relation_type, MIN(hop) AS hop
+                    FROM graph_walk
+                    GROUP BY source, target, relation_type
+                    ORDER BY hop
+                    LIMIT 100
+                """),
+                {"tid": tenant_id, "name": entity_name, "max_hops": max_hops},
+            )
+            return [{"source": row[0], "target": row[1], "relation": row[2], "hop": row[3]} for row in res.fetchall()]
+
 
 postgres_knowledge_repo = PostgresKnowledgeRepository()

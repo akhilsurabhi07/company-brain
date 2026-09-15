@@ -30,7 +30,7 @@ class ExtractedDocumentRepository:
     ):
         """Updates the processing pipeline state machine for progress tracking, priority queues, and retries."""
         async with async_session_factory() as session:
-            await session.execute(text(f"SET LOCAL app.current_tenant_id = '{tenant_id}'"))
+            await session.execute(text("SELECT set_config('app.current_tenant_id', :__tid, true)"), {"__tid": str(tenant_id)})
             await session.execute(
                 text("""
                     INSERT INTO document_processing_jobs (
@@ -65,7 +65,7 @@ class ExtractedDocumentRepository:
         Persists ExtractedDocument into normalized Document Intelligence relational tables under current_tenant_id session.
         """
         async with async_session_factory() as session:
-            await session.execute(text(f"SET LOCAL app.current_tenant_id = '{extracted_doc.tenant_id}'"))
+            await session.execute(text("SELECT set_config('app.current_tenant_id', :__tid, true)"), {"__tid": str(extracted_doc.tenant_id)})
 
             # 1. Update Parent Document Clean Content
             await session.execute(
@@ -233,7 +233,7 @@ class ExtractedDocumentRepository:
         Queries ExtractedDocument by joining normalized tables under RLS policy.
         """
         async with async_session_factory() as session:
-            await session.execute(text(f"SET LOCAL app.current_tenant_id = '{tenant_id}'"))
+            await session.execute(text("SELECT set_config('app.current_tenant_id', :__tid, true)"), {"__tid": str(tenant_id)})
 
             # Fetch Parent Document Clean Content
             doc_res = await session.execute(

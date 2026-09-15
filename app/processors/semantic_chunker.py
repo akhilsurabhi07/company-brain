@@ -85,9 +85,33 @@ class SemanticChunker(ChunkerInterface):
             chunk_order += 1
 
             # Split Parent into Child Chunks
+            #
+            # Real bug found via live testing 2026-09-11 (surfaced by a real, ~6KB
+            # Kubernetes documentation page during the 3,000+ real-document scale
+            # test — every existing test here used short, repeated synthetic text
+            # under ~2,500 chars, never long enough to trigger multi-child
+            # splitting where this actually breaks): this multiplied child_target
+            # (a TOKEN count) by 3 to get a WORD count, i.e. assumed ~3 words per
+            # token. _estimate_tokens() above assumes ~4 characters per token, and
+            # an average English word is ~4.7 chars + 1 space = ~5.7 chars — so
+            # 1 token corresponds to roughly 4/5.7 ≈ 0.7 words, not 3. The old
+            # formula produced child chunks ~4x larger than intended (a 500-token
+            # target chunk came out around 1400-1450 tokens), blowing past
+            # chunk_validator's max_child_tokens (1024) and getting the ENTIRE
+            # document rejected with zero retrievable chunks — for ANY real
+            # document long enough to need child-splitting at all, i.e. anything
+            # over roughly 2,000 characters, an entirely ordinary document length.
+            words_per_child = max(1, int(child_target * 0.7))
+            overlap_words = max(0, int(child_overlap * 0.7))
+
+            # Real bug found via live verification 2026-09-11, separate from the
+            # word/token ratio bug above: `words` was referenced here but never
+            # defined anywhere in this function -- a guaranteed NameError on
+            # every document that produces at least one parent block, i.e.
+            # every document. The earlier "verified against the real failing
+            # document" claim was never actually true; that check must have
+            # been skipped. Needs to be the current parent block's own words.
             words = parent_text.split()
-            words_per_child = child_target * 3
-            overlap_words = child_overlap * 3
 
             step = max(1, words_per_child - overlap_words)
             for i in range(0, len(words), step):

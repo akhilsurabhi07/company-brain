@@ -1,0 +1,36 @@
+# === CREDENTIALS — NEVER COMMIT ===
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*credentials*
+*secret*
+
+# === Python ===
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+venv/
+.venv/
+env/
+ENV/
+
+# === Testing & Coverage ===
+.pytest_cache/
+.coverage
+htmlcov/
+*.junit.xml
+
+# === IDE / OS ===
+.vscode/
+.idea/
+*.DS_Store
+Thumbs.db

@@ -28,7 +28,7 @@ class TeamsConnector(Connector):
             "from": {"user": {"displayName": "Engineering Manager"}}
         }
         res = RawResource(
-            tenant_id="default",
+            tenant_id="00000000-0000-0000-0000-000000000001",
             source_app=self.source_app,
             resource_category="chat_message",
             resource_type="message",

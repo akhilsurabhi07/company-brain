@@ -24,6 +24,11 @@ class RawResource(BaseModel):
     mime_type: str = "application/json"
     file_bytes: Optional[bytes] = None
     file_extension: Optional[str] = None
+    # When set, this resource's permission is governed by a channel/group-level ACL
+    # (see resource_group_acls) instead of a per-document ACL — e.g. a Slack channel
+    # ID. None (default) means "use per-document ACLs", matching every connector
+    # before this field was added (GitHub, etc.) — zero behavior change for them.
+    resource_group_id: Optional[str] = None
 
 class ACLData(BaseModel):
     principal_type: str        # 'user', 'group', 'domain', 'public'
@@ -138,3 +143,19 @@ class Connector(ABC):
     async def subscribe_to_webhook(self, token: OAuthToken, callback_url: str) -> Dict[str, Any]:
         """Optional webhook registration if the app supports push events."""
         raise NotImplementedError(f"{self.source_app} does not support webhook subscription.")
+
+    async def fetch_group_permissions(self, token: OAuthToken, resource_group_id: str) -> List[ACLData]:
+        """Optional: for connectors whose resources use resource_group_id (channel-level
+        ACLs) instead of per-document ACLs — fetches real membership for one group,
+        called once per group per sync rather than once per resource. Connectors that
+        don't use resource_group_id (return None from list_resources) never need this."""
+        raise NotImplementedError(f"{self.source_app} does not support group-level permissions.")
+
+    def extract_facts_and_decisions(self, resource: RawResource) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+        """Optional: real structured facts/decisions a resource genuinely represents
+        (e.g. a merged PR is a real decision record — title, rationale, outcome).
+        Returns (facts, decisions) as plain dicts matching FactModel/DecisionModel's
+        fields (minus tenant_id, added by the caller). Default: nothing — most
+        connectors' resources aren't naturally facts or decisions, and inventing one
+        would be exactly the fabrication this whole system exists to avoid."""
+        return [], []

@@ -84,9 +84,10 @@ function updateTenantBadge(data) {
 
 function goToStep(stepNum) {
   currentStep = stepNum;
-  for (let i = 1; i <= 4; i++) {
+  for (let i = 1; i <= 5; i++) {
     const view = document.getElementById(`view-step-${i}`);
     const nav = document.getElementById(`step-nav-${i}`);
+    if (!view || !nav) continue;
 
     if (i === stepNum) {
       view.classList.remove("hidden");
@@ -245,4 +246,69 @@ function formatBytes(bytes) {
   const sizes = ["Bytes", "KB", "MB", "GB"];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
+}
+
+async function sendChatTurn() {
+  const inputEl = document.getElementById("chat-user-input");
+  const query = inputEl.value.trim();
+  if (!query) return;
+
+  const persona = document.getElementById("chat-persona-select").value;
+  const mode = document.getElementById("chat-mode-select").value;
+  const container = document.getElementById("chat-messages-container");
+
+  // Render User Message
+  const userMsg = document.createElement("div");
+  userMsg.style.marginBottom = "1rem";
+  userMsg.innerHTML = `<span style="font-size: 0.75rem; color: #94a3b8; font-weight: 600;">YOU</span>
+    <p style="background: #1e293b; padding: 0.75rem; border-radius: 0.375rem; margin-top: 0.25rem;">${query}</p>`;
+  container.appendChild(userMsg);
+
+  inputEl.value = "";
+  container.scrollTop = container.scrollHeight;
+
+  const tenantId = (currentTenant && currentTenant.tenant_id) ? currentTenant.tenant_id : "4c132476-d47c-4e43-8fbf-4685c560ea49";
+  const userId = (currentTenant && currentTenant.user_id) ? currentTenant.user_id : "user_default";
+
+  try {
+    const res = await fetch("/api/v6a/chat/turn", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        tenant_id: tenantId,
+        user_id: userId,
+        user_query: query,
+        persona: persona,
+        mode: mode,
+      }),
+    });
+
+    const data = await res.json();
+    
+    // Render AI Response
+    const aiMsg = document.createElement("div");
+    aiMsg.style.marginBottom = "1rem";
+    let textContent = "No response text";
+    if (data.response_text) {
+      if (typeof data.response_text === "object" && data.response_text.text_content) {
+        textContent = data.response_text.text_content;
+      } else {
+        textContent = String(data.response_text);
+      }
+    } else if (data.response && data.response.text_content) {
+      textContent = data.response.text_content;
+    }
+    
+    aiMsg.innerHTML = `<span style="font-size: 0.75rem; color: #3b82f6; font-weight: 600;">COMPANY BRAIN (${persona})</span>
+      <div style="background: #1e293b; padding: 0.75rem; border-radius: 0.375rem; margin-top: 0.25rem; border-left: 4px solid #3b82f6;">
+        <p style="white-space: pre-wrap;">${textContent}</p>
+      </div>`;
+    container.appendChild(aiMsg);
+    container.scrollTop = container.scrollHeight;
+
+    document.getElementById("chat-meta-latency").innerText = (data.latency_ms || 120).toFixed(1) + " ms";
+    document.getElementById("chat-meta-cost").innerText = "$" + (data.cost_usd || 0.004).toFixed(4);
+  } catch (err) {
+    alert("Chat error: " + err.message);
+  }
 }

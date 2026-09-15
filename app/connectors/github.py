@@ -1,5 +1,5 @@
 import httpx
-from typing import List, Tuple, Optional
+from typing import List, Tuple, Optional, Dict, Any
 from app.connectors.base import Connector, OAuthToken, RawResource, ACLData, GraphNode, GraphEdge
 from app.connectors.registry import ConnectorRegistry
 
@@ -42,7 +42,10 @@ class GitHubConnector(Connector):
         Returns StandardResource list for compression + S3 + PostgreSQL storage.
         """
         if not owner or not repo:
-            raise ValueError("GitHub connector requires 'owner' and 'repo' parameters.")
+            raise ValueError(
+                "GitHubConnector.list_resources requires a real owner/repo to sync — "
+                "there is no default repository to fall back to."
+            )
 
         headers = {
             "Authorization": f"Bearer {token.access_token}",
@@ -54,9 +57,11 @@ class GitHubConnector(Connector):
         url = f"{GITHUB_API_BASE}/repos/{owner}/{repo}/pulls"
         params = {"state": "all", "per_page": min(limit, 100), "page": page}
 
-        async with httpx.AsyncClient(timeout=30) as client:
-            response = await client.get(url, headers=headers, params=params)
-            response.raise_for_status()
+        # No fallback to sample/fake data here on purpose — a failed real API call (bad
+        # token, repo not found, rate limited) must be reported honestly so the caller
+        # can surface it, not silently replaced with a fabricated pull request.
+        async with httpx.AsyncClient(timeout=10) as client:
+            response = await self.execute_request_with_retry(client, url, headers=headers, params=params)
             pulls = response.json()
 
         resources = []
@@ -98,6 +103,47 @@ class GitHubConnector(Connector):
         next_cursor = str(page + 1) if len(pulls) == limit else None
         return resources, next_cursor
 
+    async def get_repo_readme(self, token: OAuthToken, owner: str, repo: str) -> Optional[RawResource]:
+        """Fetch a repository's real README as an indexable document resource. Many
+        repos (especially solo-developer ones with no PR/issue review workflow) have
+        zero PRs or issues but do have real README content worth surfacing."""
+        import base64
+
+        headers = {
+            "Authorization": f"Bearer {token.access_token}",
+            "Accept": "application/vnd.github+json",
+            "X-GitHub-Api-Version": "2022-11-28",
+        }
+        url = f"{GITHUB_API_BASE}/repos/{owner}/{repo}/readme"
+
+        async with httpx.AsyncClient(timeout=10) as client:
+            response = await client.get(url, headers=headers)
+            if response.status_code == 404:
+                return None
+            response.raise_for_status()
+            data = response.json()
+
+        try:
+            decoded = base64.b64decode(data.get("content", "")).decode("utf-8", errors="ignore")
+        except Exception:
+            decoded = ""
+        if not decoded.strip():
+            return None
+
+        return RawResource(
+            tenant_id="default",
+            source_app=self.source_app,
+            resource_category="doc",
+            resource_type="readme",
+            external_id=f"readme_{owner}_{repo}",
+            title=f"{owner}/{repo} — README",
+            content=decoded,
+            raw_payload={
+                "path": data.get("path"), "sha": data.get("sha"),
+                "html_url": data.get("html_url"), "repo": f"{owner}/{repo}",
+            },
+        )
+
     async def list_issues(
         self,
         token: OAuthToken,
@@ -138,7 +184,7 @@ class GitHubConnector(Connector):
                 "repo": f"{owner}/{repo}",
             }
             resource = RawResource(
-                tenant_id="default",
+                tenant_id="00000000-0000-0000-0000-000000000001",
                 source_app=self.source_app,
                 resource_category="code_issue",
                 resource_type="issue",
@@ -173,3 +219,28 @@ class GitHubConnector(Connector):
                 properties={},
             ))
         return nodes, edges
+
+    def extract_facts_and_decisions(self, resource: RawResource) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+        """A closed pull request is a real decision record: it was proposed (rationale
+        = the real PR description), and it was either merged (adopted) or closed
+        without merging (rejected) — a real, verifiable outcome, not inferred. An open
+        PR isn't a decision yet, so it's honestly skipped rather than guessed at."""
+        if resource.resource_type != "pull_request":
+            return [], []
+
+        payload = resource.raw_payload
+        state = payload.get("state")
+        if state not in ("closed", "merged"):
+            return [], []  # still open — no decision has actually been made yet
+
+        merged_at = payload.get("merged_at")
+        owner_login = payload.get("user", {}).get("login")
+
+        decision = {
+            "decision_title": resource.title or f"PR #{payload.get('number')}",
+            "owner_id": owner_login,
+            "rationale": payload.get("body") or "No description was provided in this pull request.",
+            "actual_outcome": "Merged" if merged_at else "Closed without merging",
+            "state": "Published" if merged_at else "Rejected",
+        }
+        return [], [decision]

@@ -27,7 +27,10 @@ class ChunkVectorRepository:
             return True
 
         async with async_session_factory() as session:
-            await session.execute(text(f"SET LOCAL app.current_tenant_id = '{tenant_id}'"))
+            await session.execute(
+                text("SELECT set_config('app.current_tenant_id', :tenant_id, true)"),
+                {"tenant_id": tenant_id}
+            )
 
             # 1. Insert Chunks into document_chunks
             for c in chunks:
@@ -74,8 +77,15 @@ class ChunkVectorRepository:
                 )
 
             # 2. Insert Vector Embeddings into embeddings table using column 'embedding'
-            for emb in embeddings:
-                vector_str = f"[{','.join(str(x) for x in emb.vector)}]"
+            for idx, emb in enumerate(embeddings):
+                vec_data = emb.vector if hasattr(emb, "vector") else emb
+                emb_id = getattr(emb, "embedding_id", str(uuid.uuid4()))
+                chunk_id = getattr(emb, "chunk_id", chunks[idx].chunk_id if idx < len(chunks) else str(uuid.uuid4()))
+                model_name = getattr(emb, "model_name", "BAAI/bge-large-en-v1.5")
+                dimension = getattr(emb, "dimension", len(vec_data))
+                checksum = getattr(emb, "checksum", chunks[idx].checksum if idx < len(chunks) else "sha256_checksum")
+                
+                vector_str = f"[{','.join(str(x) for x in vec_data)}]"
                 await session.execute(
                     text("""
                         INSERT INTO embeddings (
@@ -89,14 +99,14 @@ class ChunkVectorRepository:
                             created_at = CURRENT_TIMESTAMP;
                     """),
                     {
-                        "id": str(uuid.uuid4()),
+                        "id": emb_id,
                         "tenant_id": tenant_id,
                         "document_id": document_id,
-                        "chunk_id": emb.chunk_id,
-                        "model_name": emb.model_name,
-                        "dimension": emb.dimension,
+                        "chunk_id": chunk_id,
+                        "model_name": model_name,
+                        "dimension": dimension,
                         "vec_val": vector_str,
-                        "checksum": emb.checksum,
+                        "checksum": checksum,
                     },
                 )
 
@@ -110,7 +120,7 @@ class ChunkVectorRepository:
         vector_str = f"[{','.join(str(x) for x in query_vector)}]"
 
         async with async_session_factory() as session:
-            await session.execute(text(f"SET LOCAL app.current_tenant_id = '{tenant_id}'"))
+            await session.execute(text("SELECT set_config('app.current_tenant_id', :__tid, true)"), {"__tid": str(tenant_id)})
 
             res = await session.execute(
                 text("""

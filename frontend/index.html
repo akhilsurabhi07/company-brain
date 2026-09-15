@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Company Brain — Enterprise AI Operating System (EXL v6B)</title>
+  <link rel="stylesheet" href="theme.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+</head>
+<body class="unauthenticated">
+  <script>
+    // Real bug found via live UI audit 2026-08-22: the full auth decision used to
+    // happen in app.js, loaded at the end of body — the browser had already
+    // parsed and painted the raw HTML (main app visible, auth-gate hidden) before
+    // that script ran, flashing the wrong state on every load. A script tag
+    // blocks HTML parsing until it finishes; placed as the very first thing
+    // inside <body>, this one runs before the browser has parsed any of the
+    // markup that follows, so the fail-safe "unauthenticated" default set on
+    // <body> above is lifted before anything is ever painted for a returning
+    // user with a real token — no flash in either direction.
+    if (localStorage.getItem("auth_token")) {
+      document.body.classList.remove("unauthenticated");
+      document.body.classList.add("has-token-preboot");
+    }
+  </script>
+  <!-- Real bug found via live UI audit 2026-08-22: before this, the raw HTML
+       painted with the sidebar/chat UI visible by default and the auth-gate
+       hidden — a real flash of the empty main app before app.js (loaded at
+       the end of body) had a chance to run and decide which state actually
+       applies. Defaulting to "unauthenticated" (and the gate itself starting
+       visible, see below) makes the fail-safe default the honest one: assume
+       a login is needed until JS proves otherwise, never assume you're in. -->
+
+  <!-- ══════════════════════════════════════════════════════════════════
+       AUTH GATE — shown until a real signed JWT exists in localStorage.
+       Replaces the old behavior where the app loaded straight to chat with
+       whatever tenant_id sat in localStorage (or a hardcoded default), and no
+       backend endpoint checked who was asking.
+       ══════════════════════════════════════════════════════════════════ -->
+  <div id="auth-gate" class="auth-gate">
+    <div class="auth-card">
+      <div class="auth-brand">Company Brain</div>
+      <div class="auth-tabs">
+        <button type="button" class="auth-tab active" data-tab="login" id="auth-tab-login">Log in</button>
+        <button type="button" class="auth-tab" data-tab="signup" id="auth-tab-signup">Create workspace</button>
+      </div>
+
+      <form id="login-form" class="auth-form">
+        <label class="auth-label">Email</label>
+        <input type="email" id="login-email" class="auth-input" autocomplete="email" required>
+        <label class="auth-label">Password</label>
+        <input type="password" id="login-password" class="auth-input" autocomplete="current-password" required>
+        <button type="submit" class="auth-submit-btn" id="login-submit-btn">Log in</button>
+      </form>
+
+      <form id="signup-form" class="auth-form hidden">
+        <div id="invite-banner" class="auth-invite-banner hidden"></div>
+        <label class="auth-label">Company name</label>
+        <input type="text" id="signup-company-name" class="auth-input" required>
+        <label class="auth-label">Company domain</label>
+        <input type="text" id="signup-company-domain" class="auth-input" placeholder="acme.com" required>
+        <label class="auth-label">Your email</label>
+        <input type="email" id="signup-email" class="auth-input" autocomplete="email" required>
+        <label class="auth-label">Password</label>
+        <input type="password" id="signup-password" class="auth-input" autocomplete="new-password" required minlength="8">
+        <input type="hidden" id="signup-invite-token">
+        <button type="submit" class="auth-submit-btn" id="signup-submit-btn">Create workspace</button>
+      </form>
+
+      <div class="auth-error hidden" id="auth-error"></div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════════════
+       SIDEBAR (ChatGPT Dark Theme)
+       ══════════════════════════════════════════════════════════════════ -->
+  <aside class="sidebar" id="sidebar">
+    <!-- Sidebar Top Control Bar -->
+    <div class="sidebar-top">
+      <button class="sidebar-icon-btn" id="sidebar-toggle-btn" title="Close Sidebar" aria-label="Close sidebar">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="9" y1="3" x2="9" y2="21"/></svg>
+      </button>
+      <button class="sidebar-icon-btn" id="new-chat-btn" title="New chat" aria-label="Start a new chat">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      </button>
+    </div>
+
+    <!-- Search Chats -->
+    <div class="sidebar-search-container">
+      <div class="sidebar-search-box">
+        <span class="search-icon">🔍</span>
+        <input type="text" id="sidebar-search-input" placeholder="Search chats...">
+      </div>
+    </div>
+
+    <!-- Navigation Hub -->
+    <div class="sidebar-menu">
+      
+      <!-- Expandable More Sub-Menu -->
+      <button class="nav-item-btn" id="more-menu-btn" onclick="toggleMoreSubmenu()" style="margin-bottom: 6px;">
+        <span>•••</span> More
+      </button>
+
+      <!-- Real bug found via live user testing 2026-08-21: every one of these called
+           showToast("Opening X...") with zero real feature behind it, and "Admin
+           Dashboard" opened a route that 404s — 14 fake-success buttons in one menu,
+           exactly the ">80% of buttons don't work" complaint. Building 14 real
+           enterprise features (a document library, a meetings tool, a plugin system,
+           etc.) isn't a fix that fits in one pass — the honest fix available now is
+           disabling these with a clear label instead of pretending they work. -->
+      <div class="more-submenu hidden" id="more-submenu" style="padding-left: 10px; display: flex; flex-direction: column; gap: 2px; margin-bottom: 10px;">
+        <button class="nav-item-btn" id="library-nav-btn" onclick="openInspectorModal('library')"><span>📚</span> Library</button>
+        <button class="nav-item-btn" id="projects-nav-btn" onclick="openInspectorModal('projects')"><span>📁</span> Projects</button>
+        <button class="nav-item-btn" id="scheduled-nav-btn" onclick="openInspectorModal('scheduled')"><span>⏱️</span> Scheduled</button>
+        <button class="nav-item-btn" id="plugins-nav-btn" onclick="openInspectorModal('plugins')"><span>🔌</span> Plugins</button>
+        <button class="nav-item-btn is-disabled" disabled title="Not built yet"><span>💻</span> Codex <span class="soon-badge">Soon</span></button>
+        <button class="nav-item-btn" id="teams-nav-btn" onclick="openInspectorModal('teams')"><span>👥</span> Teams</button>
+        <button class="nav-item-btn" id="people-nav-btn" onclick="openInspectorModal('people')"><span>👤</span> People</button>
+        <button class="nav-item-btn" id="documents-nav-btn" onclick="openInspectorModal('workspace-documents')"><span>📄</span> Documents</button>
+        <button class="nav-item-btn is-disabled" disabled title="Not built yet"><span>📅</span> Meetings <span class="soon-badge">Soon</span></button>
+        <button class="nav-item-btn" id="decisions-nav-btn" onclick="openInspectorModal('decisions')"><span>📊</span> Decisions</button>
+        <button class="nav-item-btn" id="risks-nav-btn" onclick="openInspectorModal('risks')"><span>⚠️</span> Risks</button>
+        <button class="nav-item-btn" id="architecture-graph-nav-btn" onclick="openInspectorModal('architecture-graph')"><span>🏛️</span> Architecture Graph</button>
+        <button class="nav-item-btn" id="dashboards-nav-btn" onclick="openInspectorModal('dashboards')"><span>📈</span> Dashboards</button>
+        <button class="nav-item-btn" id="admin-dashboard-nav-btn" onclick="window.location.href='/admin.html'"><span>⚙️</span> Admin Dashboard</button>
+        <button class="nav-item-btn" id="settings-nav-btn" onclick="openInspectorModal('settings')"><span>🛠️</span> Settings</button>
+      </div>
+
+      <!-- Pinned Conversations -->
+      <div class="nav-section-title" id="pinned-section-title">Pinned</div>
+      <div class="pinned-history" id="pinned-history">
+        <!-- Rendered dynamically by app.js -->
+      </div>
+
+      <!-- Recent Conversations (TODAY) -->
+      <div class="nav-section-title">Today</div>
+      <div class="sidebar-history" id="sidebar-history">
+        <!-- Rendered dynamically by app.js -->
+      </div>
+    </div>
+
+    <!-- Sidebar Profile Footer -->
+    <div class="sidebar-footer" style="position: relative;">
+      <!-- Real gap found via live end-to-end user-journey testing 2026-08-24:
+           this was a plain, non-interactive <div> — no onclick, no button,
+           nothing. There was no way for a real user to log out at all short
+           of manually clearing browser storage. Real logout now: click opens
+           a real dropdown (same .menu-dropdown pattern as the "..." topbar
+           menu) with a real "Log out" action that clears the real auth state
+           and returns to the real login gate. -->
+      <button type="button" class="user-profile-btn" id="user-profile-btn" onclick="toggleProfileMenu()" style="width:100%; background:none; border:none; cursor:pointer; text-align:left;">
+        <div class="user-avatar-circle">SA</div>
+        <span style="font-size: 0.88rem; font-weight: 500; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">Surabhi Akhil</span>
+      </button>
+      <div class="menu-dropdown hidden" id="profile-menu" style="bottom: 100%; top: auto; left: 0; right: auto; margin-bottom: 6px; margin-top: 0;">
+        <button type="button" class="menu-dropdown-item" id="logout-btn" onclick="handleLogout()">
+          <span>&#8618;</span> Log out
+        </button>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Sidebar Open Button (When collapsed) -->
+  <button class="topbar-icon-btn hidden" id="sidebar-open-btn" style="position: fixed; top: 10px; left: 10px; z-index: 100;" title="Open Sidebar" aria-label="Open sidebar">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="9" y1="3" x2="9" y2="21"/></svg>
+  </button>
+
+  <!-- Real bug found via live browser testing 2026-08-22: #new-chat-btn lives
+       inside .sidebar, which gets `pointer-events: none` while collapsed —
+       so a user who collapses the sidebar (to get more screen space) had no
+       way at all to start a new chat without reopening it first. Duplicate,
+       collapsed-only affordance next to the reopen icon, calling the same
+       resetChat() the sidebar's own button uses. -->
+  <button class="topbar-icon-btn hidden" id="new-chat-btn-collapsed" style="position: fixed; top: 10px; left: 52px; z-index: 100;" title="New chat" aria-label="Start a new chat">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+  </button>
+
+  <!-- Mobile sidebar overlay (tap outside to close) -->
+  <div class="sidebar-overlay" id="sidebar-overlay"></div>
+
+  <!-- ══════════════════════════════════════════════════════════════════
+       MAIN WORKSPACE AREA
+       ══════════════════════════════════════════════════════════════════ -->
+  <main class="main-area" id="main-area">
+
+    <!-- Topbar: Model Selector Left & Actions Right -->
+    <header class="topbar">
+      <div class="topbar-left" style="display: flex; align-items: center; gap: 12px;">
+        <!-- Real bug found via live browser testing 2026-08-22: this static
+             option list (fabricated names, "Grounded Mock Engine" as the
+             default) never matched the real models[] array in app.js, and
+             app.js never repopulated it — so every real page load showed
+             fake names with no working way to pick a real model. app.js now
+             repopulates this <select> from models[] on load; this static
+             markup is kept in sync as the no-JS fallback only. -->
+        <select id="model-select" class="topbar-model-select">
+          <option value="0" selected>Auto (Recommended) ˅</option>
+          <option value="1">OpenAI</option>
+          <option value="2">Groq</option>
+          <option value="3">Gemini</option>
+          <option value="4">Anthropic</option>
+          <option value="5">HuggingFace</option>
+          <option value="6">Local (Free, Offline)</option>
+          <option value="7">Mock (Offline Test Stub)</option>
+        </select>
+        <div id="project-memory-indicator" class="project-memory-indicator hidden" title="Current Active Project Context" style="display:flex; align-items:center; gap:6px; background:var(--bg-card); padding:4px 10px; border-radius:6px; border:1px solid var(--border); font-size:0.8rem; color:var(--text-secondary);">
+          <span class="memory-icon">🧠</span> <span id="memory-topic">No Active Project</span>
+        </div>
+        <div id="system-health-indicator" class="health-indicator" title="System Health" style="display:flex; align-items:center; gap:6px; background:var(--bg-card); padding:4px 10px; border-radius:6px; border:1px solid var(--border); font-size:0.8rem; color:var(--text-secondary); cursor: pointer;" onclick="fetchHealthStatus()">
+          <span class="health-icon" id="health-icon">🟢</span> <span id="health-status-text">Online</span>
+        </div>
+      </div>
+
+      <div class="topbar-right">
+        <!-- Code / Artifact Drawer Icon -->
+        <button class="topbar-icon-btn" id="artifact-drawer-btn" onclick="toggleArtifactDrawer()" title="Artifacts in this conversation" style="position:relative;">
+          &lt; &gt;
+          <span class="artifact-count-badge hidden" id="artifact-count-badge">0</span>
+        </button>
+        
+        <!-- Three-Dots Menu Button -->
+        <button class="topbar-icon-btn" id="three-dots-btn" onclick="toggleThreeDotsMenu()" title="More Options">
+          •••
+        </button>
+
+        <!-- Three-Dots Dropdown Menu.
+             Real accessibility bug found via live UI audit 2026-08-21: every item
+             here was a plain <div onclick>, not a real button — not natively
+             focusable or keyboard-activatable, and screen readers wouldn't
+             announce these as interactive controls at all. Converted to real
+             <button> elements (styling unaffected — .menu-dropdown-item never
+             relied on being a div). -->
+        <div class="menu-dropdown hidden" id="three-dots-menu">
+          <button type="button" class="menu-dropdown-item" onclick="openInspectorModal('evidence'); toggleThreeDotsMenu();">
+            <span>🔍</span> Show Evidence
+          </button>
+          <button type="button" class="menu-dropdown-item" onclick="openInspectorModal('explain'); toggleThreeDotsMenu();">
+            <span>❓</span> Why this answer?
+          </button>
+          <button type="button" class="menu-dropdown-item" onclick="openInspectorModal('graph'); toggleThreeDotsMenu();">
+            <span>🕸️</span> Knowledge Graph
+          </button>
+          <button type="button" class="menu-dropdown-item" onclick="toggleArtifactDrawer(); toggleThreeDotsMenu();">
+            <span>📄</span> Work / Artifacts Drawer
+          </button>
+          <button type="button" class="menu-dropdown-item" onclick="openInspectorModal('timeline'); toggleThreeDotsMenu();">
+            <span>⏱️</span> Execution Timeline
+          </button>
+          <button type="button" class="menu-dropdown-item" onclick="toggleDevTelemetry(); toggleThreeDotsMenu();">
+            <span>🛠️</span> Dev Telemetry Mode
+          </button>
+          <!-- Real bug found via live testing 2026-08-21: these two called a fake
+               success toast with no real link ever generated, and opened a route
+               (/admin) that 404s — the exact same anti-pattern already fixed in the
+               sidebar's "More" submenu, just missed here because it's a separate
+               menu. There's no real cross-user conversation-share viewer or admin
+               dashboard built yet, so disabling honestly instead of faking success. -->
+          <button type="button" class="menu-dropdown-item is-disabled" disabled title="Not built yet">
+            <span>📤</span> Share Conversation <span class="soon-badge">Soon</span>
+          </button>
+          <button type="button" class="menu-dropdown-item" onclick="window.location.href='/admin.html'">
+            <span>⚙️</span> Admin Dashboard
+          </button>
+          <button type="button" class="menu-dropdown-item" onclick="exportChatAsTxt && exportChatAsTxt(); toggleThreeDotsMenu();">
+            <span>⬇</span> Export Chat (.txt)
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Workspace Content Layout (Messages + Artifact Split Drawer) -->
+    <div class="workspace-body" id="workspace-body">
+      
+      <!-- CHAT SCROLL VIEWPORT -->
+      <div class="chat-scroll-area" id="chat-scroll-area">
+        
+        <!-- Welcome Hero -->
+        <div class="welcome-hero" id="welcome-hero">
+          <h1>What can I help with today?</h1>
+          <div class="suggestion-chips">
+            <button class="chip" data-prompt="What documents do I currently have connected and ingested?">📂 What's connected right now</button>
+            <button class="chip" data-prompt="Summarize the most recently ingested document in my workspace.">📄 Summarize latest document</button>
+            <button class="chip" data-prompt="What can Company Brain do?">💡 What can you do</button>
+            <button class="chip" data-prompt="What is Retrieval-Augmented Generation (RAG)?">🌐 Ask a general question</button>
+          </div>
+        </div>
+
+        <!-- Messages Container -->
+        <div class="messages-container hidden" id="messages-container">
+          <!-- Rendered dynamically by app.js -->
+        </div>
+      </div>
+
+      <!-- ARTIFACT DRAWER (Split Screen) -->
+      <aside class="artifact-drawer hidden" id="artifact-drawer">
+
+        <!-- ── Gallery mode: grid of every artifact generated in this conversation ── -->
+        <div id="artifact-gallery-view">
+          <div class="artifact-header">
+            <div class="artifact-title-group">
+              <span class="artifact-type-badge">📄 Artifacts</span>
+              <h3 id="artifact-gallery-heading">This conversation</h3>
+            </div>
+            <button class="action-btn-sm" id="close-artifact-drawer-btn">✕</button>
+          </div>
+          <div class="artifact-body artifact-gallery-grid" id="artifact-gallery-grid">
+            <!-- Rendered dynamically by app.js: card grid or empty state -->
+          </div>
+        </div>
+
+        <!-- ── Detail mode: one expanded artifact ── -->
+        <div id="artifact-detail-view" class="hidden">
+          <div class="artifact-header">
+            <div class="artifact-title-group">
+              <button class="artifact-back-btn" id="artifact-back-btn" title="Back to all artifacts">← All artifacts</button>
+              <span class="artifact-type-badge" id="artifact-detail-type-badge">📄</span>
+              <h3 id="artifact-drawer-title">—</h3>
+            </div>
+            <button class="action-btn-sm" id="close-artifact-drawer-btn-2">✕</button>
+          </div>
+
+          <div class="artifact-tab-bar">
+            <button class="art-tab active" id="art-tab-preview" onclick="switchArtifactTab('preview')">Preview</button>
+            <button class="art-tab" id="art-tab-code" onclick="switchArtifactTab('code')">Code / Spec</button>
+            <button class="action-btn-sm" id="artifact-pin-btn" title="Pin this artifact" style="margin-left:auto;">☆ Pin</button>
+            <button class="action-btn-sm" id="artifact-download-btn" title="Download this artifact">⬇ Download</button>
+          </div>
+
+          <div class="artifact-body" id="artifact-body-content">
+            <div id="art-pane-preview" class="art-pane"></div>
+            <div id="art-pane-code" class="art-pane hidden">
+              <pre><code id="art-pane-code-content"></code></pre>
+            </div>
+          </div>
+        </div>
+      </aside>
+
+    </div>
+
+    <!-- Input Dock Area -->
+    <div class="input-area">
+      <div class="input-box" id="input-box">
+        <!-- File Upload Button -->
+        <button class="upload-btn" id="upload-btn" title="Upload a document to Company Brain" onclick="document.getElementById('file-upload-input').click()">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
+        </button>
+        <input type="file" id="file-upload-input" accept=".pdf,.docx,.txt,.csv,.xlsx,.md,.json,.yaml,.png,.jpg,.jpeg,.bmp,.tiff,.tif,.webp" style="display:none" onchange="handleFileUpload(event)">
+        <textarea id="prompt-textarea" placeholder="Ask anything" rows="1"></textarea>
+        <button class="send-btn" id="send-btn" title="Send" disabled>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+        </button>
+        <!-- Real gap found via live UI audit 2026-08-22: no way to cancel a
+             response — real, demonstrated response times this session ran
+             40-90+ seconds under provider retries/CPU contention, with nothing
+             to do but wait. Every comparable chat product offers a stop control. -->
+        <button class="send-btn stop-btn hidden" id="stop-btn" title="Stop generating" aria-label="Stop generating">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+        </button>
+      </div>
+      <div style="text-align:center; font-size:0.72rem; color:#666; margin-top:4px;">Company Brain can make mistakes. Verify important information.</div>
+    </div>
+
+  </main>
+
+  <!-- ══════════════════════════════════════════════════════════════════
+       INSPECTOR DRAWER PANEL
+       ══════════════════════════════════════════════════════════════════ -->
+  <aside class="inspector-drawer hidden" id="inspector-drawer">
+    <div class="artifact-header">
+      <div class="artifact-title-group">
+        <span class="artifact-type-badge">🔍 Inspector</span>
+        <h3 id="inspector-drawer-title">Evidence</h3>
+      </div>
+      <button class="action-btn-sm" id="close-inspector-drawer-btn" onclick="document.getElementById('inspector-drawer').classList.add('hidden'); document.getElementById('workspace-body').classList.remove('inspector-open');">✕</button>
+    </div>
+    <div id="inspector-drawer-content" class="inspector-body" style="padding: 16px; overflow-y: auto; font-size: 0.88rem; color: var(--text-primary); line-height: 1.6;">
+      <!-- Filled dynamically by JS -->
+    </div>
+  </aside>
+
+  <!-- Upload Progress Modal -->
+  <div class="modal-overlay hidden" id="upload-modal">
+    <div class="modal-card" style="max-width:420px; text-align:center;">
+      <div id="upload-modal-icon" style="font-size:2.5rem; margin-bottom:12px;">📎</div>
+      <h3 id="upload-modal-title" style="margin-bottom:8px;">Uploading Document</h3>
+      <p id="upload-modal-msg" style="color:#b4b4b4; font-size:0.88rem; margin-bottom:16px;">Processing your file...</p>
+      <div id="upload-progress-bar" style="background:#2f2f2f; border-radius:6px; height:6px; overflow:hidden;">
+        <div id="upload-progress-fill" style="height:100%; background:#10a37f; width:0%; transition:width 0.4s;"></div>
+      </div>
+      <button class="action-btn-sm" style="margin-top:16px;" onclick="document.getElementById('upload-modal').classList.add('hidden')">Close</button>
+    </div>
+  </div>
+
+  <div class="toast hidden" id="toast"></div>
+
+  <script src="app.js"></script>
+<script>
+  // Mobile: wire sidebar-toggle-btn to slide sidebar in/out
+  (function() {
+    var sidebarToggle = document.getElementById('sidebar-toggle-btn');
+    var sidebarOpenBtn = document.getElementById('sidebar-open-btn');
+    var sidebar = document.getElementById('sidebar');
+    var overlay = document.getElementById('sidebar-overlay');
+    function isMobile() { return window.innerWidth <= 768; }
+    if (sidebarToggle) {
+      sidebarToggle.addEventListener('click', function() {
+        if (isMobile()) {
+          sidebar.classList.remove('mobile-open');
+          if (overlay) overlay.classList.remove('active');
+        } else {
+          sidebar.classList.add('collapsed');
+          if (sidebarOpenBtn) sidebarOpenBtn.classList.remove('hidden');
+        }
+      });
+    }
+    if (sidebarOpenBtn) {
+      sidebarOpenBtn.addEventListener('click', function() {
+        if (isMobile()) {
+          sidebar.classList.add('mobile-open');
+          if (overlay) overlay.classList.add('active');
+        }
+      });
+    }
+    // On mobile hide sidebar at start
+    if (isMobile()) {
+      sidebar.classList.remove('collapsed');
+      if (sidebarOpenBtn) sidebarOpenBtn.classList.remove('hidden');
+    }
+    // Real bug found via live tablet-viewport testing 2026-08-23: this mobile
+    // check only ever ran once, at initial page load. Resizing the window (or
+    // rotating a tablet) from desktop width down into the <=768px mobile
+    // breakpoint afterward left the sidebar correctly collapsed off-screen by
+    // CSS, but #sidebar-open-btn — the only way to reopen it on mobile — stayed
+    // hidden forever, since nothing ever re-ran this check. The user was left
+    // with no way to get the sidebar back short of a full page reload.
+    // Re-evaluate on every resize, not just at load.
+    window.addEventListener('resize', function() {
+      if (isMobile()) {
+        if (sidebarOpenBtn && !sidebar.classList.contains('mobile-open')) {
+          sidebarOpenBtn.classList.remove('hidden');
+        }
+      } else {
+        // Back to desktop width: only the explicit collapse toggle should
+        // reveal this button again, matching existing desktop behavior.
+        if (sidebarOpenBtn && !sidebar.classList.contains('collapsed')) {
+          sidebarOpenBtn.classList.add('hidden');
+        }
+        sidebar.classList.remove('mobile-open');
+        if (overlay) overlay.classList.remove('active');
+      }
+    });
+  })();
+</script>
+</body>
+</html>

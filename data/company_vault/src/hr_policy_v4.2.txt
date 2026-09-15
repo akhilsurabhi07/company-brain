@@ -1,0 +1,116 @@
+COMPANY BRAIN TECHNOLOGIES INC.
+HR POLICY MANUAL — VERSION 4.2
+Effective Date: January 1, 2026
+Approved By: Chief People Officer — Dr. Ananya Sharma
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+SECTION 1 — EMPLOYMENT POLICIES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1.1 WORKING HOURS
+Standard working hours are 9:00 AM to 6:00 PM IST, Monday through Friday.
+Employees in engineering roles follow a flexible schedule (core hours: 11 AM–4 PM IST).
+Remote employees must maintain availability during core hours.
+
+1.2 PROBATION PERIOD
+All new employees undergo a 90-day probation period.
+Performance reviews occur at Day 30, Day 60, and Day 90.
+Permanent employment requires satisfactory reviews at all three checkpoints.
+
+1.3 ANNUAL LEAVE ENTITLEMENTS
+- Full-time employees: 24 paid leave days per calendar year.
+- Sick leave: 12 days per year (not carry-forward eligible).
+- Casual leave: 6 days per year.
+- Maternity leave: 26 weeks (as per Maternity Benefit Act, 2017).
+- Paternity leave: 10 days.
+- Bereavement leave: 5 days for immediate family members.
+
+1.4 COMPENSATION REVIEW CYCLE
+Salary reviews are conducted annually in April.
+Merit increases range from 0% to 18% based on performance rating.
+Performance ratings: Exceptional (5), Exceeds Expectations (4), Meets Expectations (3), Below Expectations (2), Unsatisfactory (1).
+Employees rated 4 or above for two consecutive years are fast-tracked for promotion.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+SECTION 2 — CODE OF CONDUCT
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+2.1 ANTI-HARASSMENT POLICY
+Company Brain Technologies has zero tolerance for any form of harassment.
+All complaints must be filed with the Internal Complaints Committee (ICC) within 90 days of the incident.
+The ICC comprises: Presiding Officer (VP HR), two employee representatives, one external member.
+Investigations must be completed within 60 days. Appeals may be filed within 30 days of the ICC's decision.
+
+2.2 CONFLICT OF INTEREST
+Employees must disclose any financial interest exceeding ₹50,000 in a competitor or vendor.
+Board approval is required for moonlighting in a related industry.
+Violations result in immediate termination without severance.
+
+2.3 DATA SECURITY OBLIGATIONS
+Each employee must complete the annual security awareness training (CSAT course, 4 hours).
+Company laptops must use full-disk encryption (BitLocker / FileVault).
+Personal devices accessing company systems must enroll in MDM within 7 days of onboarding.
+Sharing credentials with any person, including colleagues, is strictly prohibited.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+SECTION 3 — BENEFITS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+3.1 HEALTH INSURANCE
+All employees and immediate family members (spouse + up to 2 children) are covered under the Group Medical Insurance plan.
+Insurer: Star Health & Allied Insurance.
+Sum Insured: ₹5,00,000 per family per annum.
+Pre-existing conditions are covered from Day 1.
+Dental and vision: Covered up to ₹25,000 per year under the Flexi-Benefits wallet.
+
+3.2 FLEXI-BENEFITS WALLET
+Annual Flexi-Benefits wallet: ₹60,000 (taxable if unused by March 31).
+Eligible categories: Books & Learning, Gym & Wellness, Gadgets (work-related), Broadband, Dental, Vision.
+Reimbursement via Darwinbox portal — maximum claim turnaround: 7 working days.
+
+3.3 EMPLOYEE STOCK OPTION PLAN (ESOP)
+Vesting schedule: 4-year cliff-vesting with 25% vest at year 1 and monthly thereafter.
+Strike price set at Series A valuation: ₹47 per share (as of March 2024).
+ESOP pool size: 12% of fully diluted equity.
+Exercise window after termination: 90 days.
+
+3.4 LEARNING & DEVELOPMENT
+Annual L&D budget: ₹1,20,000 per employee.
+Eligible spends: Online courses (Coursera, Udemy, Pluralsight), certifications (AWS, GCP, Azure, CISSP), conference attendance.
+Books: Up to ₹15,000 per year from L&D budget.
+Study leave: Up to 5 days per year for certification exams.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+SECTION 4 — PERFORMANCE MANAGEMENT
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+4.1 OKRS & GOAL SETTING
+OKRs (Objectives and Key Results) are set quarterly.
+OKR completion below 70% triggers a Performance Improvement Plan (PIP).
+PIP duration: 60 days, with bi-weekly check-ins with direct manager and HR.
+Three consecutive quarters below 70% OKR completion results in separation.
+
+4.2 360° FEEDBACK
+Annual 360° feedback is collected in November.
+Participants: Direct manager, 2 peers (chosen by employee), 2 cross-functional collaborators (chosen by manager).
+Results are shared with the employee but NOT the specific reviewers (to ensure anonymity).
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+SECTION 5 — SEPARATION POLICY
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+5.1 RESIGNATION NOTICE PERIOD
+- Below Manager level: 30 days.
+- Manager to Director: 60 days.
+- VP and above: 90 days.
+Notice periods can be negotiated; buyout at daily CTC rate.
+
+5.2 GRATUITY
+Gratuity is payable after 5 years of continuous service.
+Formula: (Last drawn basic salary × 15 × years of service) / 26.
+Maximum gratuity payable: ₹20,00,000 (as per Payment of Gratuity Act, 1972, 2018 amendment).
+
+5.3 EXIT INTERVIEW
+Mandatory exit interview with HR Business Partner.
+Equipment return checklist must be completed before full-and-final (F&F) settlement.
+F&F settlement timeline: 45 days from last working day.

@@ -1,0 +1,36 @@
+COMPANY BRAIN TECHNOLOGIES INC.
+SYSTEM ARCHITECTURE SPECIFICATION — MASTER VERSION 3.0
+Document ID: ARCH-SPEC-2026-V3.0
+Classification: Confidential - Master Engineering Architecture Specification
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+1. SYSTEM OVERVIEW & ARCHITECTURE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Company Brain OS is an enterprise-grade AI Operating System built on a 6-layer microservice architecture deployed on Cloud-Agnostic Infrastructure (Local / Docker / Kubernetes v1.30).
+
+Core Subsystem Modules:
+- Ingestion Engine (Module 1): Parallel document pulling from Connectors (Slack, Drive, S3, GitHub), PII redaction, and local/S3 zstd storage.
+- Dynamic Chunking & Embeddings (Module 2): Multi-modal chunking and 1024-dim BGE-Large vector embedding pipeline.
+- Knowledge Graph Engine (Module 3): GraphRAG pipeline linking entity nodes and semantic relationships in Apache AGE (PostgreSQL 16 graph extension).
+- Knowledge Retrieval Engine (Module 4): Hybrid vector (pgvector) + keyword search + graph traversal with Row-Level Security (RLS) isolation and explainable citations.
+- EKAP Gateway (Module 5): Enterprise Knowledge Adapter Protocol API Gateway (FastAPI, OAuth2/OIDC, ABAC/RBAC, SSE streaming).
+- Enterprise Experience Layer (Module 6): Interactive frontend web application with Evidence Drawer, Timeline, and Citation Viewer.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+2. DATA FLOW & INFRASTRUCTURE DECISIONS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+- Graph Database: Apache AGE (Graph extension natively integrated on PostgreSQL 16).
+- Vector Database: pgvector (Vector indexing natively integrated on PostgreSQL 16 with HNSW indexing).
+- Relational Database: PostgreSQL 16 with Row-Level Security (RLS) policies per tenant (`SET LOCAL app.current_tenant_id`).
+- Infrastructure & Deployment: Cloud-Agnostic (Docker Compose, Kubernetes, Local Host, Multi-Cloud).
+- Object Storage: Enterprise Storage Vault with Zstandard (zstd) compression and AES-256 GCM encryption.
+- Event Bus: Redis Streams (`company_brain:ingestion_events`) and Asyncio task distribution.
+- API Framework: FastAPI (Python 3.11/3.12) with uvicorn ASGI workers.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+3. SECURITY & COMPLIANCE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+- Encryption at Rest: AES-256 GCM for storage and DB volumes.
+- Encryption in Transit: TLS 1.3 for all inter-service communications.
+- Multi-Tenant Isolation: Hard Tenant Boundary isolation enforced at PostgreSQL 16 RLS layer.
+- Audit Logging: Append-only hash-chained audit log table (`audit_logs`) tracking every retrieval query and document view.

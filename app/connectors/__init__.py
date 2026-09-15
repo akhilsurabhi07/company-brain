@@ -1,6 +1,6 @@
 from app.connectors.base import Connector, OAuthToken, RawResource, ACLData, GraphNode, GraphEdge
 from app.connectors.registry import ConnectorRegistry
-from app.connectors import slack, google_drive, github, jira, whatsapp, teams
+from app.connectors import slack, google_drive, github, jira, whatsapp, teams, sharepoint
 
 __all__ = [
     "Connector",
@@ -16,4 +16,5 @@ __all__ = [
     "jira",
     "whatsapp",
     "teams",
+    "sharepoint",
 ]

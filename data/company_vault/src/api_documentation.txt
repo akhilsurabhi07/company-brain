@@ -1,0 +1,32 @@
+COMPANY BRAIN TECHNOLOGIES INC.
+API DOCUMENTATION — OPENAPI V3.1 SPECIFICATION
+Document ID: API-DOC-2026-V3
+Classification: Internal Developer Documentation
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+1. INGESTION ENDPOINTS (/api/v1/ingestion)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+- POST /api/v1/ingestion/start
+  Description: Kick off parallel tenant document ingestion pipeline.
+  Body: { "tenant_id": "string" }
+  Response: 202 Accepted { "status": "success", "tenant_id": "string" }
+
+- GET /api/v1/ingestion/status?tenant_id={tenant_id}
+  Description: Live telemetry status bar counters for document sync progress.
+  Response: { "total_documents_synced": int, "total_s3_bytes": int, "apps_status": list }
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+2. RETRIEVAL ENDPOINTS (/api/v1/retrieval)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+- POST /api/v1/retrieval/query
+  Description: Execute GraphRAG hybrid retrieval query.
+  Body: { "tenant_id": "string", "query": "string", "top_k": 5 }
+  Response: KnowledgeContext v1 with retrieved_chunks, source_name, page_number, trust_score.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+3. CHAT & CONVERSATION ENDPOINTS (/api/v6a/chat)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+- POST /api/v6a/chat/turn
+  Description: Execute a single grounded conversational turn.
+  Body: { "tenant_id": "string", "user_query": "string", "persona": "CTO|ENGINEER|CEO", "mode": "ASK|REVIEW" }
+  Response: { "response_text": "string", "provider": "string", "grounding": dict, "citations": list }

@@ -60,9 +60,26 @@ class EmbeddingOrchestrator:
             texts = [c.text_content for c in uncached_chunks]
             raw_vectors = provider.embed_texts(texts)
 
-            valid_vectors, reasons = embedding_validator.validate_batch(raw_vectors, provider.dimension)
-
-            for chunk, vec in zip(uncached_chunks, valid_vectors):
+            # Real silent data-corruption bug found via code audit 2026-09-11
+            # (same pass that found the semantic_chunker/chunk_validator word-
+            # count bugs): embedding_validator.validate_batch() drops invalid
+            # vectors from its returned list, so valid_vectors can be SHORTER
+            # than uncached_chunks/raw_vectors. zip(uncached_chunks,
+            # valid_vectors) has no way to know which vector was dropped — the
+            # moment ANY single vector in a batch fails validation (wrong
+            # dimension, NaN, near-zero L2 norm — all real, if rare,
+            # possibilities at real scale), every chunk AFTER that point
+            # silently gets paired with the WRONG vector, one position off.
+            # The chunk's real text stays correct but its stored embedding
+            # would represent different content — a wrong-content retrieval
+            # match with no error, no log, nothing to notice by symptom alone.
+            # Fixed by validating each (chunk, vector) pair together at the
+            # same index and only ever advancing chunk and vector in lockstep,
+            # instead of trusting a separately-filtered list to still align.
+            for chunk, vec in zip(uncached_chunks, raw_vectors):
+                is_valid, reason = embedding_validator.validate_vector(vec, provider.dimension)
+                if not is_valid:
+                    continue
                 tenant_embedding_cache.set(tenant_id, chunk.checksum, provider.model_name, vec)
 
                 result_embeddings.append(

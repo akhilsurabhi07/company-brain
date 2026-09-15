@@ -13,6 +13,7 @@ from app.security.crypto import token_crypto
 from app.security.jwt_auth import jwt_engine
 from app.processors.pii_redactor import pii_redactor
 from app.connectors.registry import ConnectorRegistry
+from tests.conftest import auth_headers_for
 
 @pytest.mark.asyncio
 async def test_1_lossless_zstd_compression():
@@ -95,19 +96,23 @@ async def test_6_connectors_hub_and_token_caching_api():
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         tenant_id = str(uuid.uuid4())
+        headers = auth_headers_for(tenant_id)
 
         # List connectors
-        res_list = await client.get(f"/api/v1/connectors/list?tenant_id={tenant_id}")
+        res_list = await client.get(f"/api/v1/connectors/list?tenant_id={tenant_id}", headers=headers)
         assert res_list.status_code == 200
         connectors = res_list.json()["connectors"]
-        assert len(connectors) == 6
+        # Was 6 — SharePoint added as a real 7th connector 2026-08-20 (see
+        # app/connectors/sharepoint.py); this count should track AVAILABLE_APPS's
+        # real length, not a number frozen at whatever it happened to be before.
+        assert len(connectors) == len({"slack", "google_drive", "github", "jira", "whatsapp", "teams", "sharepoint"})
 
         # Connect Slack
         res_conn = await client.post("/api/v1/connectors/connect", json={
             "tenant_id": tenant_id,
             "source_app": "slack",
             "action": "connect"
-        })
+        }, headers=headers)
         assert res_conn.status_code == 200
 
 @pytest.mark.asyncio
@@ -116,23 +121,24 @@ async def test_7_ingestion_trigger_and_telemetry_api():
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         tenant_id = str(uuid.uuid4())
+        headers = auth_headers_for(tenant_id)
 
         # Connect Slack first
         await client.post("/api/v1/connectors/connect", json={
             "tenant_id": tenant_id,
             "source_app": "slack",
             "action": "connect"
-        })
+        }, headers=headers)
 
         # Start ingestion
-        res_start = await client.post("/api/v1/ingestion/start", json={"tenant_id": tenant_id})
+        res_start = await client.post("/api/v1/ingestion/start", json={"tenant_id": tenant_id}, headers=headers)
         assert res_start.status_code == 200
 
         # Wait 1s for background processing
         await asyncio.sleep(1.0)
 
         # Poll status telemetry
-        res_status = await client.get(f"/api/v1/ingestion/status?tenant_id={tenant_id}")
+        res_status = await client.get(f"/api/v1/ingestion/status?tenant_id={tenant_id}", headers=headers)
         assert res_status.status_code == 200
         telemetry = res_status.json()
         assert "total_documents_synced" in telemetry

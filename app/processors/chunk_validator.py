@@ -76,8 +76,17 @@ class ChunkValidator:
                 reasons.append(f"Rejected chunk {chunk.chunk_id}: Token count ({chunk.token_count}) below min threshold ({min_tokens})")
                 continue
 
-            # 3. Reject Over-sized Chunks
-            if chunk.token_count > max_tokens:
+            # 3. Reject Over-sized Chunks (parents exempt, same as the min-token
+            # rule above — real bug found the same session as the word/token
+            # ratio fix in semantic_chunker.py: max_tokens=1024 is a CHILD-chunk
+            # ceiling (matches chunking_config.py's own max_child_tokens), but
+            # this was applied uniformly to parent chunks too, even though every
+            # resource category's parent_target_tokens (800-2000) legitimately
+            # exceeds 1024 by design ("document": 1500, "legal": 2000). A
+            # correctly-sized parent chunk working exactly as intended was being
+            # rejected purely for being a parent, on every document that produced
+            # one — not a hypothetical, reproduced on a real Kubernetes doc.
+            if chunk.token_count > max_tokens and not chunk.metadata.get("is_parent"):
                 reasons.append(f"Rejected chunk {chunk.chunk_id}: Token count ({chunk.token_count}) exceeds max threshold ({max_tokens})")
                 continue
 

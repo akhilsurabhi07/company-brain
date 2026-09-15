@@ -20,7 +20,22 @@ dependencies = [
     "httpx>=0.26.0",
     "python-multipart>=0.0.6",
     "pypdf>=4.0.0",
-    "python-docx>=1.1.0"
+    "python-docx>=1.1.0",
+    "easyocr>=1.7.2",
+    "pymupdf>=1.28.0",
+    # Real self-hosted ML stack (BGEEmbedder, CrossEncoderReranker,
+    # LocalTransformersProviderAdapter). Found missing from this file entirely
+    # 2026-08-21 during real-question testing: the project's own .venv lacked
+    # these, so scripts run against .venv silently degraded to fake
+    # hash-based "synthetic" embeddings with no error surfaced anywhere. Only
+    # the live server (started against the machine's global Python install,
+    # which happened to have these already) worked correctly. A fresh
+    # install from this file would have hit the same silent failure in
+    # production. See bge_embedder.py's fail-loudly fix from the same date.
+    "sentence-transformers>=2.7.0",
+    "torch>=2.2.0",
+    "transformers>=4.40.0",
+    "fastembed>=0.2.0"
 ]
 
 [project.optional-dependencies]
@@ -38,4 +53,9 @@ pythonpath = ["."]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "session"
 asyncio_default_test_loop_scope = "session"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["app*"]
+
 

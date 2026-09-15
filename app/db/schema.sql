@@ -31,7 +31,12 @@ CREATE TABLE IF NOT EXISTS tenants (
     name VARCHAR(255) NOT NULL,
     domain VARCHAR(255) UNIQUE NOT NULL,
     created_at TIMESTAMPTZ DEFAULT now(),
-    updated_at TIMESTAMPTZ DEFAULT now()
+    updated_at TIMESTAMPTZ DEFAULT now(),
+    -- Per-tenant overrides (embedding model, chunk policy, feature flags) — see
+    -- app/core_config/tenant_config_service.py. Real persistence: previously this
+    -- service could never actually be configured (no setter existed at all), so it
+    -- always silently fell through to hardcoded defaults.
+    settings JSONB DEFAULT '{}'::jsonb
 );
 
 -- 2. Users Table (Enterprise Accounts & RBAC)
@@ -78,15 +83,34 @@ CREATE TABLE IF NOT EXISTS documents (
     -- Additional Metadata (JSONB)
     metadata JSONB DEFAULT '{}'::jsonb,
 
+    -- Points this document at a channel-level ACL group (see resource_group_acls
+    -- below) instead of per-document ACLs. NULL for GitHub and anything else using
+    -- document_acls directly — existing per-document ACL behavior is unaffected.
+    resource_group_id VARCHAR(255) DEFAULT NULL,
+
     -- Audit Timestamps
-    created_at TIMESTAMPTZ,
+    -- Real bug found via live Admin Dashboard testing 2026-08-23: created_at
+    -- had no DEFAULT, and none of the five real writers into this table
+    -- (manual upload, connector ingestion, 3 webhook paths — grepped every
+    -- real "INSERT INTO documents" in the app) ever set it explicitly, so
+    -- every real document ever ingested through any live path had a NULL
+    -- created_at. This silently broke "ORDER BY created_at DESC" everywhere
+    -- it's used (Documents panel, Library) and showed as "Invalid Date" in
+    -- the Admin Dashboard's recent-documents list.
+    created_at TIMESTAMPTZ DEFAULT now(),
     updated_at TIMESTAMPTZ,
     ingested_at TIMESTAMPTZ DEFAULT now(),
     archived_at TIMESTAMPTZ DEFAULT NULL,
     deleted_at TIMESTAMPTZ DEFAULT NULL,
 
+    -- Real Postgres full-text search over document titles (keyword/title-match signal
+    -- for hybrid retrieval — replaces substring LIKE matching).
+    title_search_vector tsvector GENERATED ALWAYS AS (to_tsvector('english', coalesce(title, ''))) STORED,
+
     CONSTRAINT unique_tenant_source_external UNIQUE (tenant_id, source_app, external_id)
 );
+CREATE INDEX idx_documents_fts ON documents USING GIN (title_search_vector);
+CREATE INDEX IF NOT EXISTS idx_documents_resource_group ON documents(tenant_id, source_app, resource_group_id) WHERE resource_group_id IS NOT NULL;
 
 -- Upgrade existing documents table if columns missing
 ALTER TABLE documents ADD COLUMN IF NOT EXISTS lifecycle_state VARCHAR(64) NOT NULL DEFAULT 'active';
@@ -311,11 +335,14 @@ CREATE TABLE document_chunks (
     text_content TEXT NOT NULL,
     token_count INT NOT NULL,
     metadata JSONB DEFAULT '{}'::jsonb,
-    created_at TIMESTAMPTZ DEFAULT now()
+    created_at TIMESTAMPTZ DEFAULT now(),
+    -- Real Postgres full-text search (replaces substring LIKE keyword matching).
+    text_search_vector tsvector GENERATED ALWAYS AS (to_tsvector('english', text_content)) STORED
 );
 
 CREATE INDEX idx_doc_chunks_lookup ON document_chunks(tenant_id, document_id, chunk_index);
 CREATE INDEX idx_doc_chunks_section ON document_chunks(tenant_id, section_id);
+CREATE INDEX idx_doc_chunks_fts ON document_chunks USING GIN (text_search_vector);
 
 CREATE TABLE embeddings (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -419,6 +446,45 @@ CREATE TABLE IF NOT EXISTS document_acls (
 CREATE INDEX IF NOT EXISTS idx_acls_doc ON document_acls(document_id);
 CREATE INDEX IF NOT EXISTS idx_acls_lookup ON document_acls(tenant_id, principal_type, principal_external_id);
 
+-- Document Pins (Library, Module 6C 2026-08-23): backs the "Library" panel —
+-- a real, per-user curated subset of Documents, not a fabricated separate
+-- concept. Documents lists everything a caller can see; Library is what
+-- they've deliberately chosen to keep close. Re-verified against the real
+-- ACL query at read time (workspace_router.py's /library endpoint), so
+-- revoking a document's ACL later also drops it out of a user's Library,
+-- not just out of Documents. user_id is VARCHAR, matching the existing
+-- convention in conversation_sessions (the caller's real user_id captured
+-- at login, not necessarily strictly re-validated against users.id).
+CREATE TABLE IF NOT EXISTS document_pins (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    user_id VARCHAR(255) NOT NULL,
+    document_id UUID NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+    pinned_at TIMESTAMPTZ DEFAULT now(),
+    UNIQUE (tenant_id, user_id, document_id)
+);
+CREATE INDEX IF NOT EXISTS idx_document_pins_lookup ON document_pins(tenant_id, user_id);
+
+-- Channel-level ACLs (2026-08-20, Slack connector prep): document_acls above is
+-- per-document, one row per principal — correct for GitHub (permissions genuinely
+-- vary per PR/issue) but wrong for Slack, where permission is really a property of
+-- the channel, not each individual message. Fanning that out per-message would mean
+-- one row per (message, channel member) — for a 500-person channel, 500 rows per
+-- message. This table stores channel membership once; documents.resource_group_id
+-- (NULL for GitHub/anything using per-document ACLs) points a document at its group.
+CREATE TABLE IF NOT EXISTS resource_group_acls (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    source_app VARCHAR(64) NOT NULL,          -- e.g. 'slack'
+    resource_group_id VARCHAR(255) NOT NULL,  -- e.g. Slack channel ID
+    principal_type VARCHAR(64) NOT NULL,
+    principal_external_id VARCHAR(255) NOT NULL,
+    permission VARCHAR(64) NOT NULL DEFAULT 'read',
+    created_at TIMESTAMPTZ DEFAULT now(),
+    UNIQUE (tenant_id, source_app, resource_group_id, principal_type, principal_external_id)
+);
+CREATE INDEX IF NOT EXISTS idx_resource_group_acls_lookup ON resource_group_acls(tenant_id, source_app, resource_group_id);
+
 CREATE TABLE IF NOT EXISTS oauth_tokens (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
@@ -429,6 +495,7 @@ CREATE TABLE IF NOT EXISTS oauth_tokens (
     scopes TEXT[],
     expires_at TIMESTAMPTZ,
     updated_at TIMESTAMPTZ DEFAULT now(),
+    config JSONB DEFAULT '{}'::jsonb,  -- connector-specific settings, e.g. {"owner": "...", "repo": "..."} for GitHub
 
     CONSTRAINT unique_tenant_app_token UNIQUE (tenant_id, source_app)
 );
@@ -572,3 +639,282 @@ CREATE POLICY sync_statuses_tenant_isolation ON sync_statuses USING (tenant_id =
 
 DROP POLICY IF EXISTS audit_logs_tenant_isolation ON ingestion_audit_logs;
 CREATE POLICY audit_logs_tenant_isolation ON ingestion_audit_logs USING (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid);
+
+-- =====================================================================
+-- TENANT INVITES (real invite system, 2026-08-21)
+-- =====================================================================
+-- Before this, signup either created a brand-new tenant, or — the bug fixed the same
+-- day — silently let anyone claiming to know an existing tenant's domain join it as
+-- admin. Rejecting that outright closed the hole but left no way for a real admin to
+-- actually bring a teammate in. This table is that real path: an admin creates an
+-- invite scoped to one specific email + role; only the SHA-256 hash is stored (same
+-- principle as mcp_api_keys — the raw token is shown once, never read back, only
+-- ever compared); single-use, enforced by used_at; time-bound, enforced by expires_at.
+CREATE TABLE IF NOT EXISTS tenant_invites (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    invited_by_user_id UUID NOT NULL,
+    email VARCHAR(255) NOT NULL,  -- bound to a specific invitee, not redeemable by anyone who sees the link
+    role VARCHAR(64) NOT NULL DEFAULT 'member',
+    token_hash VARCHAR(64) NOT NULL UNIQUE,
+    created_at TIMESTAMPTZ DEFAULT now(),
+    expires_at TIMESTAMPTZ NOT NULL,
+    used_at TIMESTAMPTZ DEFAULT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_tenant_invites_hash ON tenant_invites(token_hash) WHERE used_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_tenant_invites_tenant ON tenant_invites(tenant_id);
+
+-- Same pre-auth-lookup shape as mcp_api_keys: redeeming an invite means looking it up
+-- by hash BEFORE any tenant context exists, so the policy has to permit that specific
+-- case (no tenant context set) while still isolating normal tenant-scoped queries.
+ALTER TABLE tenant_invites ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_invites_tenant_isolation ON tenant_invites;
+CREATE POLICY tenant_invites_tenant_isolation ON tenant_invites USING (
+    current_setting('app.current_tenant_id', true) IS NULL
+    OR current_setting('app.current_tenant_id', true) = ''
+    OR tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid
+);
+
+-- =====================================================================
+-- MCP API KEYS (Module 10 — external AI connectivity, 2026-08-20)
+-- =====================================================================
+-- Real per-tenant bearer keys for the MCP server (app/api/mcp_server_router.py).
+-- Only the SHA-256 hash is ever stored — the raw key is shown once at creation time
+-- and cannot be recovered, same principle as GitHub/Stripe-style API keys (never
+-- AES-encrypted-and-decryptable like oauth_tokens, since nothing needs to read it back).
+CREATE TABLE IF NOT EXISTS mcp_api_keys (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    key_hash VARCHAR(64) NOT NULL UNIQUE,
+    name VARCHAR(255) NOT NULL DEFAULT 'Default MCP Key',
+    created_at TIMESTAMPTZ DEFAULT now(),
+    last_used_at TIMESTAMPTZ,
+    revoked_at TIMESTAMPTZ DEFAULT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_mcp_api_keys_hash ON mcp_api_keys(key_hash) WHERE revoked_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_mcp_api_keys_tenant ON mcp_api_keys(tenant_id);
+
+-- Real constraint this policy has to account for: resolving "which tenant does this
+-- raw key belong to" is inherently a PRE-tenant-context lookup — the app can't
+-- SET_CONFIG app.current_tenant_id before it knows the answer. A standard
+-- tenant-match-only policy would deadlock that query. Security here is instead
+-- provided by key_hash's uniqueness and 256 bits of real randomness (see the /keys
+-- generation endpoint) — an empty session context may look up by hash (finding at
+-- most one row, by construction), but once a tenant context IS set, cross-tenant rows
+-- stay invisible exactly as with every other table.
+ALTER TABLE mcp_api_keys ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS mcp_api_keys_tenant_isolation ON mcp_api_keys;
+CREATE POLICY mcp_api_keys_tenant_isolation ON mcp_api_keys USING (
+    current_setting('app.current_tenant_id', true) IS NULL
+    OR current_setting('app.current_tenant_id', true) = ''
+    OR tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid
+);
+
+-- =====================================================================
+-- APPLICATION CONNECTION ROLE DEFINITION (NON-SUPERUSER WITH NOBYPASSRLS)
+-- =====================================================================
+DO $$ 
+BEGIN
+    IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'company_brain_app') THEN
+        CREATE ROLE company_brain_app WITH LOGIN PASSWORD 'app_secure_password_2026' NOBYPASSRLS;
+    END IF;
+END $$;
+
+-- Real bug fixed 2026-08-21: hardcoded 'company_brain' here, but the actual live
+-- database (per .env's POSTGRES_DB) is named 'postgres' — this GRANT silently never
+-- matched the real database, which was part of why this whole block, despite being
+-- correctly designed, was never actually in effect. GRANT ... ON DATABASE requires a
+-- literal identifier (current_database() can't be used directly there), so this goes
+-- through dynamic SQL to stay correct regardless of what the real database is named.
+DO $$
+BEGIN
+    EXECUTE format('GRANT CONNECT ON DATABASE %I TO company_brain_app', current_database());
+END $$;
+GRANT USAGE ON SCHEMA public TO company_brain_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO company_brain_app;
+GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO company_brain_app;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO company_brain_app;
+
+-- =====================================================================
+-- AGENT EXECUTIONS (Module 7 — AI Agent Platform, real slice started 2026-08-21)
+-- =====================================================================
+-- Real, scoped first step of Module 7: a single read-only Research Agent, not the
+-- full multi-agent/tool-approval platform from the Module 7-10 master architecture
+-- doc — that stays a documented future build. Every real agent run (plan + each
+-- tool call + final result) is persisted here for real observability, matching the
+-- "agent execution timeline" concept from that spec. tenant_id is a mandatory,
+-- explicitly-filtered column in every query against this table (not just an RLS
+-- policy) — the same defense-in-depth pattern used everywhere else this session,
+-- since real RLS enforcement is still blocked pending the company_brain_app role fix.
+CREATE TABLE IF NOT EXISTS agent_executions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    user_id VARCHAR(255) NOT NULL,
+    agent_type VARCHAR(64) NOT NULL DEFAULT 'research',
+    user_request TEXT NOT NULL,
+    state VARCHAR(32) NOT NULL DEFAULT 'CREATED',
+    plan JSONB,
+    steps JSONB NOT NULL DEFAULT '[]'::jsonb,
+    final_result TEXT,
+    error_message TEXT,
+    created_at TIMESTAMPTZ DEFAULT now(),
+    completed_at TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS idx_agent_executions_tenant ON agent_executions(tenant_id);
+ALTER TABLE agent_executions ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS agent_executions_tenant_isolation ON agent_executions;
+CREATE POLICY agent_executions_tenant_isolation ON agent_executions USING (
+    tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid
+);
+
+-- =====================================================================
+-- CHAT FEEDBACK (real bug found via live testing 2026-08-22)
+-- =====================================================================
+-- POST /api/v6a/chat/feedback claimed "Feedback recorded" but only ever wrote a
+-- transient logger.info() line — no table existed, so every real thumbs up/down a
+-- user ever submitted vanished the moment that log line rotated or the process
+-- restarted, despite the API telling the user it was durably saved. turn_id is a
+-- plain string (the real generated turn id, e.g. "turn_ab12cd34") rather than a
+-- foreign key — there's no separate persisted "turns" table to reference against;
+-- it's still real and traceable back to server logs for a given tenant/session.
+CREATE TABLE IF NOT EXISTS chat_feedback (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    user_id VARCHAR(255) NOT NULL,
+    turn_id VARCHAR(255) NOT NULL,
+    feedback VARCHAR(16) NOT NULL,  -- 'up' or 'down'
+    comment TEXT,
+    created_at TIMESTAMPTZ DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_chat_feedback_tenant ON chat_feedback(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_chat_feedback_turn ON chat_feedback(turn_id);
+ALTER TABLE chat_feedback ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS chat_feedback_tenant_isolation ON chat_feedback;
+CREATE POLICY chat_feedback_tenant_isolation ON chat_feedback USING (
+    tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid
+);
+
+-- Module 5 (Gateway/EKAP) real, persistent, RLS-protected audit log for
+-- /api/v1/search requests. Replaces the prior in-memory-only AuditLogger
+-- (app/gateway/audit/audit_logger.py), which claimed "Immutable audit trail
+-- writer" while actually holding records in a plain Python list that vanished
+-- on every restart. Modeled on the existing ingestion_audit_logs table, but
+-- scoped to gateway search/query events rather than ingestion events.
+CREATE TABLE IF NOT EXISTS gateway_audit_log (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    user_id VARCHAR(255) NOT NULL,
+    role VARCHAR(64) NOT NULL,
+    auth_method VARCHAR(16) NOT NULL,  -- 'jwt' or 'api_key'
+    endpoint VARCHAR(128) NOT NULL,
+    query TEXT NOT NULL,
+    result_count INT DEFAULT 0,
+    confidence_score FLOAT DEFAULT 0.0,
+    cost_units INT DEFAULT 0,
+    latency_ms FLOAT DEFAULT 0.0,
+    correlation_id VARCHAR(64),
+    created_at TIMESTAMPTZ DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_gateway_audit_log_tenant ON gateway_audit_log(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_gateway_audit_log_created ON gateway_audit_log(created_at);
+ALTER TABLE gateway_audit_log ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS gateway_audit_log_tenant_isolation ON gateway_audit_log;
+CREATE POLICY gateway_audit_log_tenant_isolation ON gateway_audit_log USING (
+    tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid
+);
+
+-- Module 6B (2026-08-22): real durable conversation history + Projects.
+-- Before this, ConversationService's session/turn history lived only in
+-- InMemorySessionRepository (app/conversation/session/memory_repo.py) — a
+-- plain Python dict inside one process. A server restart, crash, or any
+-- multi-instance/horizontal-scaling deployment wiped or fragmented every
+-- tenant's entire conversation history with no way to recover it. This is
+-- the real, durable replacement: PostgresSessionRepository (see
+-- app/conversation/session/postgres_repo.py) implements the exact same
+-- BaseSessionRepository interface as the in-memory version it replaces.
+CREATE TABLE IF NOT EXISTS projects (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    name VARCHAR(255) NOT NULL,
+    description TEXT,
+    created_by VARCHAR(255),
+    created_at TIMESTAMPTZ DEFAULT now(),
+    updated_at TIMESTAMPTZ DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_projects_tenant ON projects(tenant_id);
+
+-- Scheduled Queries (Module 6C, 2026-08-23): backs the real "Scheduled"
+-- panel — a saved question that re-runs itself on an interval and keeps its
+-- latest real answer. Deliberately NOT built on Celery Beat: Redis is
+-- confirmed unreachable in this environment (see the .env-lost memory from
+-- 2026-08-19 — never restored), so a Celery-beat-based scheduler would be
+-- real code with no way to actually verify it fires. Runs instead via a
+-- plain in-process asyncio loop (app/scheduler/query_scheduler.py) that
+-- needs nothing but Postgres — genuinely real and genuinely testable.
+CREATE TABLE IF NOT EXISTS scheduled_queries (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    user_id VARCHAR(255) NOT NULL,
+    query_text TEXT NOT NULL,
+    persona VARCHAR(64) NOT NULL DEFAULT 'CTO',
+    interval_seconds INT NOT NULL,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    next_run_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    last_run_at TIMESTAMPTZ,
+    last_status VARCHAR(32),      -- 'ok' | 'error' | NULL (never run yet)
+    last_answer TEXT,
+    last_error TEXT,
+    created_at TIMESTAMPTZ DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_scheduled_queries_tenant ON scheduled_queries(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_scheduled_queries_due ON scheduled_queries(is_active, next_run_at);
+
+CREATE TABLE IF NOT EXISTS conversation_sessions (
+    session_id VARCHAR(64) PRIMARY KEY,
+    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    user_id VARCHAR(255) NOT NULL,
+    project_id UUID REFERENCES projects(id) ON DELETE SET NULL,
+    title VARCHAR(500) NOT NULL DEFAULT 'New Conversation',
+    state VARCHAR(32) NOT NULL DEFAULT 'ACTIVE',
+    pinned BOOLEAN DEFAULT false,
+    created_at TIMESTAMPTZ DEFAULT now(),
+    updated_at TIMESTAMPTZ DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_conv_sessions_tenant_user ON conversation_sessions(tenant_id, user_id);
+CREATE INDEX IF NOT EXISTS idx_conv_sessions_project ON conversation_sessions(project_id);
+
+CREATE TABLE IF NOT EXISTS conversation_turns (
+    turn_id VARCHAR(64) PRIMARY KEY,
+    session_id VARCHAR(64) NOT NULL REFERENCES conversation_sessions(session_id) ON DELETE CASCADE,
+    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    user_query TEXT NOT NULL,
+    persona_used VARCHAR(64),
+    mode_used VARCHAR(64),
+    assistant_response_json JSONB,
+    model_name VARCHAR(128),
+    latency_ms DOUBLE PRECISION,
+    cost_usd DOUBLE PRECISION,
+    created_at TIMESTAMPTZ DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_conv_turns_session ON conversation_turns(session_id, created_at);
+
+ALTER TABLE projects ENABLE ROW LEVEL SECURITY;
+ALTER TABLE conversation_sessions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE conversation_turns ENABLE ROW LEVEL SECURITY;
+ALTER TABLE projects FORCE ROW LEVEL SECURITY;
+ALTER TABLE conversation_sessions FORCE ROW LEVEL SECURITY;
+ALTER TABLE conversation_turns FORCE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS projects_tenant_isolation ON projects;
+CREATE POLICY projects_tenant_isolation ON projects USING (
+    tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid
+);
+DROP POLICY IF EXISTS conv_sessions_tenant_isolation ON conversation_sessions;
+CREATE POLICY conv_sessions_tenant_isolation ON conversation_sessions USING (
+    tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid
+);
+DROP POLICY IF EXISTS conv_turns_tenant_isolation ON conversation_turns;
+CREATE POLICY conv_turns_tenant_isolation ON conversation_turns USING (
+    tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid
+);
+

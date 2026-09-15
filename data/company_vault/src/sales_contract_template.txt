@@ -1,0 +1,18 @@
+COMPANY BRAIN TECHNOLOGIES INC.
+MASTER SALES & ENTERPRISE LICENSE CONTRACT TEMPLATE
+Contract Ref: MSA-2026-ENT-TMPL
+Classification: Confidential - Legal & Sales Operations Only
+
+1. ENTERPRISE SUBSCRIPTION TERMS
+   - Annual Subscription Fee: $120,000 USD per tenant (up to 1,000 active users).
+   - Overage Charges: $12 USD per additional user per month.
+   - Payment Terms: Net 30 from date of invoice.
+
+2. SLA & AVAILABILITY GUARANTEE
+   - System Availability: 99.9% uptime per calendar month (excluding planned maintenance).
+   - Maintenance Window: Sundays 02:00 – 04:00 UTC with 72 hours advance notice.
+   - Service Credits: 10% credit for uptime between 99.0% – 99.8%; 25% credit below 99.0%.
+
+3. INTELLECTUAL PROPERTY & DATA OWNERSHIP
+   - All customer data ingested into Company Brain remains 100% customer property.
+   - Customer data is NEVER used to train shared base models without explicit written opt-in.

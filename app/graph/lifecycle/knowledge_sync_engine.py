@@ -80,7 +80,7 @@ class KnowledgeSyncEngine:
         # Content changed! Deprecate old document facts in AWS RDS PostgreSQL
         async with async_session_factory() as session:
             async with session.begin():
-                await session.execute(text(f"SET LOCAL app.current_tenant_id = '{tenant_id}'"))
+                await session.execute(text("SELECT set_config('app.current_tenant_id', :__tid, true)"), {"__tid": str(tenant_id)})
                 # Deprecate old fact sources
                 await session.execute(
                     text("""
@@ -114,7 +114,7 @@ class KnowledgeSyncEngine:
         """
         async with async_session_factory() as session:
             async with session.begin():
-                await session.execute(text(f"SET LOCAL app.current_tenant_id = '{tenant_id}'"))
+                await session.execute(text("SELECT set_config('app.current_tenant_id', :__tid, true)"), {"__tid": str(tenant_id)})
                 await session.execute(
                     text("""
                         UPDATE graph_facts 
@@ -139,7 +139,7 @@ class KnowledgeSyncEngine:
         import json
         async with async_session_factory() as session:
             async with session.begin():
-                await session.execute(text(f"SET LOCAL app.current_tenant_id = '{tenant_id}'"))
+                await session.execute(text("SELECT set_config('app.current_tenant_id', :__tid, true)"), {"__tid": str(tenant_id)})
                 await session.execute(
                     text("""
                         UPDATE graph_entities 

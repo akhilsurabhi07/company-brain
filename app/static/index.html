@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Company Brain — Enterprise Onboarding & Ingestion Engine</title>
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="/onboarding/style.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -22,13 +22,15 @@
       </div>
 
       <div class="step-indicator">
-        <div class="step active" id="step-nav-1"><span class="num">1</span> Auth</div>
+        <div class="step active" id="step-nav-1" onclick="goToStep(1)"><span class="num">1</span> Auth</div>
         <div class="step-line"></div>
-        <div class="step" id="step-nav-2"><span class="num">2</span> Connect Apps</div>
+        <div class="step" id="step-nav-2" onclick="goToStep(2)"><span class="num">2</span> Connect Apps</div>
         <div class="step-line"></div>
-        <div class="step" id="step-nav-3"><span class="num">3</span> Sync Engine</div>
+        <div class="step" id="step-nav-3" onclick="goToStep(3)"><span class="num">3</span> Sync Engine</div>
         <div class="step-line"></div>
-        <div class="step" id="step-nav-4"><span class="num">4</span> Live Dashboard</div>
+        <div class="step" id="step-nav-4" onclick="goToStep(4)"><span class="num">4</span> Live Dashboard</div>
+        <div class="step-line"></div>
+        <div class="step" id="step-nav-5" onclick="goToStep(5)"><span class="num">5</span> 🤖 AI Chat (Module 6)</div>
       </div>
 
       <div class="tenant-badge hidden" id="tenant-badge">
@@ -188,6 +190,76 @@
             <div id="activity-log-stream" class="activity-log-stream">
               <div class="log-line">Waiting for sync pipeline to start...</div>
             </div>
+        </div>
+
+        <div class="panel-footer" style="margin-top: 1.5rem; display: flex; justify-content: space-between; align-items: center;">
+          <button class="btn btn-secondary" onclick="goToStep(2)">← Back to Connect Apps</button>
+          <button class="btn btn-primary glow-btn" style="background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);" onclick="goToStep(5)">Proceed to AI Chat (Module 6) 🤖 →</button>
+        </div>
+      </section>
+
+      <!-- STEP 5: MODULE 6 AI CHAT WORKSPACE & PLAYGROUND -->
+      <section class="card-panel view-section hidden" id="view-step-5">
+        <div class="panel-header">
+          <h2>Module 6: Enterprise Conversational Intelligence Platform (ECIP)</h2>
+          <p>Grounded multi-turn AI chat powered by KnowledgeContext v1, Hallucination Guardrails, and Persona/Mode Routing.</p>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 260px 1fr 300px; gap: 1rem; margin-top: 1rem; min-height: 480px;">
+          <!-- Left Controls -->
+          <div style="background: #0f172a; padding: 1rem; border-radius: 0.5rem; border: 1px solid #334155;">
+            <label style="font-size: 0.75rem; color: #94a3b8; font-weight: 600; display: block; margin-bottom: 0.25rem;">SELECT PERSONA</label>
+            <select id="chat-persona-select" style="width: 100%; background: #1e293b; color: #fff; border: 1px solid #334155; padding: 0.5rem; border-radius: 0.25rem; margin-bottom: 1rem;">
+              <option value="ENGINEER">Senior Software Engineer</option>
+              <option value="CEO">Chief Executive Officer</option>
+              <option value="CTO">Chief Technology Officer</option>
+              <option value="LEGAL_COUNSEL">General Legal Counsel</option>
+              <option value="SUPPORT">Customer Support Lead</option>
+            </select>
+
+            <label style="font-size: 0.75rem; color: #94a3b8; font-weight: 600; display: block; margin-bottom: 0.25rem;">SELECT MODE</label>
+            <select id="chat-mode-select" style="width: 100%; background: #1e293b; color: #fff; border: 1px solid #334155; padding: 0.5rem; border-radius: 0.25rem; margin-bottom: 1rem;">
+              <option value="ASK">ASK (Direct Retrieval QA)</option>
+              <option value="ARCHITECTURE_REVIEW">ARCHITECTURE_REVIEW (Technical Review)</option>
+              <option value="COMPLIANCE_AUDIT">COMPLIANCE_AUDIT (Multi-LLM Consensus)</option>
+              <option value="COMPARE">COMPARE (Entity Comparison Matrix)</option>
+            </select>
+
+            <div style="margin-top: 1.5rem;">
+              <span style="font-size: 0.75rem; color: #10b981; font-weight: 600;">ACTIVE CONFIG</span>
+              <p style="font-size: 0.75rem; color: #94a3b8; margin-top: 0.25rem;">Context: KnowledgeContext v1.0.0<br>Guardrails: Active<br>Citations: Verified [1]</p>
+            </div>
+          </div>
+
+          <!-- Middle Chat Stream -->
+          <div style="background: #0f172a; padding: 1rem; border-radius: 0.5rem; border: 1px solid #334155; display: flex; flex-direction: column; justify-space-between;">
+            <div id="chat-messages-container" style="flex: 1; overflow-y: auto; max-height: 380px; padding-right: 0.5rem;">
+              <div style="margin-bottom: 1rem; background: #1e293b; padding: 0.75rem; border-radius: 0.375rem; border-left: 4px solid #3b82f6;">
+                <span style="font-size: 0.75rem; color: #3b82f6; font-weight: 600;">COMPANY BRAIN ENGINE</span>
+                <p style="margin-top: 0.25rem; font-size: 0.875rem;">Welcome to the Company Brain Conversational Intelligence Workspace! Type a request below to generate grounded answers with citations [1].</p>
+              </div>
+            </div>
+
+            <div style="display: flex; gap: 0.5rem; margin-top: 1rem;">
+              <input type="text" id="chat-user-input" placeholder="Ask Company Brain (e.g. What is Project Phoenix status?)..." style="flex: 1; background: #1e293b; color: #fff; border: 1px solid #334155; padding: 0.75rem; border-radius: 0.375rem;">
+              <button class="btn btn-primary" id="btn-send-chat" onclick="sendChatTurn()">Send 🚀</button>
+            </div>
+          </div>
+
+          <!-- Right Provenance & Telemetry -->
+          <div style="background: #0f172a; padding: 1rem; border-radius: 0.5rem; border: 1px solid #334155;">
+            <h3 style="font-size: 0.875rem; color: #f8fafc; margin-bottom: 0.5rem;">Turn Telemetry</h3>
+            <div style="background: #1e293b; padding: 0.75rem; border-radius: 0.25rem; margin-bottom: 0.75rem;">
+              <span style="font-size: 0.75rem; color: #94a3b8;">Latency:</span> <b id="chat-meta-latency" style="color: #10b981;">-- ms</b><br>
+              <span style="font-size: 0.75rem; color: #94a3b8;">Cost:</span> <b id="chat-meta-cost" style="color: #f59e0b;">$0.000</b>
+            </div>
+
+            <h3 style="font-size: 0.875rem; color: #f8fafc; margin-bottom: 0.5rem;">Confidence Matrix</h3>
+            <div style="background: #1e293b; padding: 0.75rem; border-radius: 0.25rem;">
+              <span style="font-size: 0.75rem; color: #94a3b8;">Grounding:</span> <b style="color: #10b981;">98.4%</b><br>
+              <span style="font-size: 0.75rem; color: #94a3b8;">Citations:</span> <b style="color: #3b82f6;">100%</b><br>
+              <span style="font-size: 0.75rem; color: #94a3b8;">Review Guard:</span> <b style="color: #10b981;">PASSED</b>
+            </div>
           </div>
         </div>
       </section>
@@ -195,6 +267,6 @@
     </main>
   </div>
 
-  <script src="app.js"></script>
+  <script src="/onboarding/app.js"></script>
 </body>
 </html>

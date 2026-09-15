@@ -2,6 +2,7 @@ import uuid
 import pytest
 from httpx import AsyncClient, ASGITransport
 from app.main import app
+from tests.conftest import auth_headers_for
 
 @pytest.mark.asyncio
 async def test_step1_signup_and_login():
@@ -36,15 +37,16 @@ async def test_step2_connectors_and_token_encryption():
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         tenant_id = "00000000-0000-0000-0000-000000000001"
-        
+        headers = auth_headers_for(tenant_id)
+
         conn_res = await client.post("/api/v1/connectors/connect", json={
             "tenant_id": tenant_id,
             "source_app": "slack",
             "action": "connect"
-        })
+        }, headers=headers)
         assert conn_res.status_code == 200
 
-        list_res = await client.get(f"/api/v1/connectors/list?tenant_id={tenant_id}")
+        list_res = await client.get(f"/api/v1/connectors/list?tenant_id={tenant_id}", headers=headers)
         assert list_res.status_code == 200
         connectors = list_res.json()["connectors"]
         slack_card = next(c for c in connectors if c["id"] == "slack")
@@ -55,11 +57,12 @@ async def test_step3_and_4_ingestion_and_telemetry():
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         tenant_id = "00000000-0000-0000-0000-000000000001"
+        headers = auth_headers_for(tenant_id)
 
-        start_res = await client.post("/api/v1/ingestion/start", json={"tenant_id": tenant_id})
+        start_res = await client.post("/api/v1/ingestion/start", json={"tenant_id": tenant_id}, headers=headers)
         assert start_res.status_code == 200
 
-        status_res = await client.get(f"/api/v1/ingestion/status?tenant_id={tenant_id}")
+        status_res = await client.get(f"/api/v1/ingestion/status?tenant_id={tenant_id}", headers=headers)
         assert status_res.status_code == 200
         telemetry = status_res.json()
         assert "total_documents_synced" in telemetry

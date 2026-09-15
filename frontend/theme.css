@@ -1,0 +1,1206 @@
+/* ═══════════════════════════════════════════════════════════════════
+   Company Brain — EXL v6B ChatGPT-Dark Theme System
+   ═══════════════════════════════════════════════════════════════════ */
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+/* Real accessibility gap found via live UI audit 2026-08-21: no keyboard
+   focus-visible styling existed anywhere except the auth form inputs (which
+   themselves removed the default outline) — a keyboard-only user tabbing
+   through the app had no visible indication of where focus was, on any
+   button, chip, or menu item. */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+/* ── Visual design pass 2026-08-23 ──────────────────────────────────────
+   Requested: richer color, a real "glassy, classic" feel, and proper
+   animation — not a rebrand. The base palette moves from flat neutral
+   grays to a deep charcoal with a faint cool undertone (so translucent
+   glass surfaces have something with actual depth to blur), the original
+   emerald accent is kept as the functional/brand color throughout, and a
+   muted brass/gold token is added for restrained, "classic" emphasis
+   (used sparingly — pinned items, premium/verified states — never as a
+   second primary color). --glass-* tokens back a real backdrop-filter
+   treatment applied to floating chrome (sidebar, drawers, dropdown menus,
+   modals) — never to dense chat text, which stays fully opaque for
+   readability. --ease-smooth replaces plain "ease" site-wide via
+   --transition for a more deliberate, premium motion feel. */
+:root {
+  --bg-primary:    #15171c;
+  --bg-sidebar:    #0e1013;
+  --bg-card:       #1c1f26;
+  --bg-input:      #1c1f26;
+  --bg-hover:      #242832;
+  --bg-active:     #2a2f3a;
+  --text-primary:  #f0f1f4;
+  --text-secondary:#b3b8c4;
+  --text-muted:    #7d8391;
+  --border:        #2b2f39;
+  --border-light:  #23262e;
+  --accent:        #10a37f;
+  --accent-2:      #34d9ab;   /* lighter emerald for glows/highlights */
+  --accent-gold:   #c9a668;   /* classic, restrained secondary — used sparingly */
+
+  /* Real fix found via live visual review 2026-08-23: the sidebar/drawers
+     are normal flex siblings in desktop layout, not overlays — there is
+     nothing visible directly behind them for backdrop-filter to blur, so a
+     glass tint darker than (or equal to) the base background is invisible,
+     not glassy. These are deliberately LIGHTER and cooler than --bg-primary
+     so the panel reads as a distinct, elevated pane of glass sitting above
+     the canvas even with no overlap — backdrop-filter still does real work
+     wherever these surfaces DO overlap content (the mobile fixed sidebar,
+     the dropdown menu, modals). */
+  --glass-bg:        rgba(34, 38, 47, 0.72);
+  --glass-bg-strong:  rgba(30, 34, 43, 0.90);
+  --glass-border:    rgba(255, 255, 255, 0.09);
+  --glass-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  --glass-shadow:    0 12px 40px rgba(0, 0, 0, 0.45), var(--glass-highlight);
+  --glass-blur:      20px;
+
+  --font-sans:     'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono:     'JetBrains Mono', monospace;
+  --radius:        12px;
+  --ease-smooth:   cubic-bezier(0.22, 1, 0.36, 1);
+  --transition:    0.18s var(--ease-smooth);
+}
+
+html, body {
+  height: 100%;
+  font-family: var(--font-sans);
+  color: var(--text-primary);
+  overflow: hidden;
+  display: flex;
+}
+
+/* A faint ambient glow anchored at two corners — subtle enough not to read
+   as decoration on its own, but gives every glass surface something with
+   real color and depth to blur, which is what actually makes translucency
+   look "glassy" rather than just gray-on-gray. */
+body {
+  background:
+    radial-gradient(ellipse 900px 600px at 12% -8%, rgba(16, 163, 127, 0.08), transparent 60%),
+    radial-gradient(ellipse 800px 600px at 100% 108%, rgba(201, 166, 104, 0.05), transparent 60%),
+    var(--bg-primary);
+}
+
+/* ── SIDEBAR ─────────────────────────────────────────────────────────── */
+.sidebar {
+  width: 260px;
+  min-width: 260px;
+  height: 100vh;
+  background: var(--glass-bg-strong);
+  backdrop-filter: blur(var(--glass-blur)) saturate(140%);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(140%);
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--glass-border);
+  box-shadow: var(--glass-highlight);
+  transition: width var(--transition), min-width var(--transition), opacity var(--transition);
+  overflow: hidden;
+  z-index: 50;
+}
+.sidebar.collapsed {
+  width: 0;
+  min-width: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Real bug found via live browser testing 2026-08-22: #sidebar-open-btn (and
+   the new #new-chat-btn-collapsed next to it) are position:fixed at the
+   viewport's top-left so they stay reachable once the sidebar collapses to
+   width:0 — but the topbar's own left-aligned content (the model picker)
+   starts at the same x-offset, so the two floating icons visually overlapped
+   and clipped it. Reserve exactly their combined width in the topbar's own
+   padding whenever the sidebar is collapsed, so nothing sits underneath them. */
+.sidebar.collapsed ~ .main-area .topbar {
+  padding-left: 96px;
+}
+
+.sidebar-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 14px 8px;
+}
+.sidebar-icon-btn {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 1.1rem;
+  padding: 6px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background var(--transition), color var(--transition);
+}
+.sidebar-icon-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+
+.sidebar-search-container {
+  padding: 6px 12px 10px;
+}
+.sidebar-search-box {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #212121;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 7px 12px;
+}
+.sidebar-search-box input {
+  background: none;
+  border: none;
+  color: var(--text-primary);
+  font-size: 0.88rem;
+  outline: none;
+  width: 100%;
+}
+/* Real accessibility gap found via live keyboard-nav audit 2026-08-31: this
+   selector's own specificity (.sidebar-search-box input) beats the global
+   :focus-visible rule above it, so tabbing into search left a keyboard user
+   with zero visible indication focus landed here. Restore it specifically
+   for focus-visible (keyboard/programmatic focus), same convention as the
+   global rule -- an ordinary mouse click still gets no outline. */
+.sidebar-search-box input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.sidebar-search-box input::placeholder {
+  color: var(--text-muted);
+}
+.search-icon {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.sidebar-menu {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 10px 14px;
+}
+.sidebar-menu::-webkit-scrollbar { width: 4px; }
+.sidebar-menu::-webkit-scrollbar-thumb { background: #333; border-radius: 4px; }
+
+.nav-item-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: none;
+  border: none;
+  color: var(--text-primary);
+  font-size: 0.88rem;
+  cursor: pointer;
+  text-align: left;
+  transition: background var(--transition);
+}
+.nav-item-btn:hover {
+  background: var(--bg-hover);
+  transform: translateX(2px);
+}
+.nav-item-btn { transition: background var(--transition), transform var(--transition); }
+
+/* Reusable card surface for panel-rendered lists (Library, Plugins,
+   Scheduled, Projects, Admin, Decisions, Risks, etc.) — replaces the
+   scattered hardcoded inline "background:#212121; border:1px solid
+   #383838" strings those panels were built with, so they inherit the same
+   refined palette/glass language as the rest of the app (and any future
+   palette change) automatically instead of drifting out of sync with it. */
+.glass-card {
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid var(--border-light);
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin-bottom: 8px;
+  transition: background var(--transition), border-color var(--transition),
+              transform var(--transition), box-shadow var(--transition);
+}
+.glass-card:hover {
+  background: rgba(255, 255, 255, 0.045);
+  border-color: var(--glass-border);
+  transform: translateY(-1px);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.25);
+}
+/* Non-interactive variant for empty/info states (no hover lift — nothing to
+   click), same pattern this app already uses honestly and consistently for
+   "nothing here yet" messaging across every real panel. */
+.glass-info-box {
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid var(--border-light);
+  border-radius: 10px;
+  padding: 14px;
+}
+
+.more-submenu {
+  overflow: hidden;
+  transition: max-height 0.28s var(--ease-smooth);
+}
+.more-submenu.hidden {
+  display: none !important;
+}
+
+.nav-section-title {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 14px 8px 6px;
+}
+
+.chat-history-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 0.88rem;
+  color: var(--text-primary);
+  margin-bottom: 2px;
+  transition: background var(--transition);
+  position: relative;
+  group: relative;
+}
+.chat-history-item:hover {
+  background: var(--bg-hover);
+}
+.chat-history-item.active {
+  background: var(--bg-card);
+  font-weight: 500;
+}
+.chat-item-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+.chat-item-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity var(--transition);
+}
+.chat-history-item:hover .chat-item-actions {
+  opacity: 1;
+}
+.chat-action-icon {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  padding: 2px 4px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.chat-action-icon:hover {
+  color: #fff;
+  background: rgba(255,255,255,0.1);
+}
+.chat-action-icon.pinned {
+  /* One deliberate, restrained use of the classic gold token — "pinned"
+     conventionally reads as gold/amber, and the brand's own emerald accent
+     is doing enough work everywhere else in the app already. */
+  color: var(--accent-gold);
+  opacity: 1 !important;
+}
+
+.sidebar-footer {
+  padding: 12px 14px;
+  border-top: 1px solid var(--border-light);
+}
+.user-profile-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background var(--transition);
+}
+.user-profile-btn:hover { background: var(--bg-hover); }
+.user-avatar-circle {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: #3b82f6;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #fff;
+}
+
+/* ── MAIN AREA ───────────────────────────────────────────────────────── */
+.main-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  /* Real fix 2026-08-23: this opaque flat fill sat on top of body's ambient
+     glow gradient and completely hid it (main-area covers the entire
+     viewport apart from the sidebar) — repeating the same glow here
+     instead of a flat color gives the chat canvas actual depth for the
+     glass side panels to read against, rather than one uniform flat gray. */
+  background:
+    radial-gradient(ellipse 1000px 700px at 15% -5%, rgba(16, 163, 127, 0.055), transparent 55%),
+    radial-gradient(ellipse 800px 600px at 100% 105%, rgba(201, 166, 104, 0.04), transparent 55%),
+    var(--bg-primary);
+  position: relative;
+  overflow: hidden;
+}
+
+/* ── TOPBAR ──────────────────────────────────────────────────────────── */
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 20px;
+  height: 52px;
+  flex-shrink: 0;
+}
+.topbar-left { display: flex; align-items: center; gap: 8px; }
+
+/* Custom Model Select Dropdown */
+.topbar-model-select {
+  background: none;
+  border: none;
+  color: var(--text-primary);
+  font-size: 1.05rem;
+  font-weight: 600;
+  font-family: var(--font-sans);
+  cursor: pointer;
+  outline: none;
+  padding: 4px 8px;
+  border-radius: 8px;
+  transition: background var(--transition);
+}
+.topbar-model-select:hover { background: var(--bg-hover); }
+/* Same real accessibility gap as .sidebar-search-box above -- this rule's own
+   outline:none beat the global :focus-visible fix. */
+.topbar-model-select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.topbar-model-select option {
+  background: var(--bg-card);
+  color: var(--text-primary);
+}
+
+.topbar-right { display: flex; align-items: center; gap: 10px; position: relative; }
+
+.topbar-icon-btn {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 1.1rem;
+  padding: 6px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background var(--transition), color var(--transition);
+}
+.topbar-icon-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+
+/* Three-Dots Menu Dropdown */
+.menu-dropdown {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 6px;
+  background: var(--glass-bg-strong);
+  backdrop-filter: blur(var(--glass-blur)) saturate(140%);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(140%);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius);
+  padding: 6px;
+  min-width: 220px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.55), var(--glass-highlight);
+  z-index: 1000;
+  animation: menuPopIn 0.16s var(--ease-smooth);
+  transform-origin: top right;
+}
+@keyframes menuPopIn {
+  from { transform: scale(0.96) translateY(-4px); opacity: 0; }
+  to   { transform: scale(1) translateY(0);        opacity: 1; }
+}
+.menu-dropdown-item {
+  /* Reset native <button> chrome — converted from <div onclick> 2026-08-21 for
+     real keyboard accessibility; visual appearance must stay identical. */
+  background: none;
+  border: none;
+  font-family: inherit;
+  text-align: left;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: background var(--transition);
+}
+.menu-dropdown-item:hover { background: var(--bg-hover); }
+
+/* ── WORKSPACE BODY (Split Layout) ──────────────────────────────────── */
+.workspace-body {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+
+/* ── CHAT VIEWPORT & MESSAGES ────────────────────────────────────────── */
+.chat-scroll-area {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.chat-scroll-area::-webkit-scrollbar { width: 6px; }
+.chat-scroll-area::-webkit-scrollbar-thumb { background: #383838; border-radius: 4px; }
+.chat-scroll-area::-webkit-scrollbar-track { background: transparent; }
+
+.welcome-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  gap: 20px;
+  max-width: 640px;
+  padding: 60px 20px;
+  text-align: center;
+}
+.welcome-hero h1 { font-size: 1.8rem; font-weight: 600; color: #fff; }
+
+.suggestion-chips { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+.chip {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  padding: 9px 18px;
+  border-radius: 20px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: background var(--transition), color var(--transition);
+}
+.chip:hover { background: var(--bg-hover); color: #fff; }
+
+.messages-container {
+  width: 100%;
+  max-width: 860px;
+  padding: 28px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+
+.message { display: flex; flex-direction: column; gap: 10px; font-size: 0.96rem; line-height: 1.75; font-family: var(--font-sans); }
+.message.user { align-items: flex-end; }
+.message.user .message-content {
+  background: var(--bg-card);
+  padding: 10px 18px;
+  border-radius: 20px;
+  max-width: 80%;
+  color: var(--text-primary);
+}
+
+.message.assistant .message-body { color: var(--text-primary); }
+
+.source-tag {
+  background: transparent;
+  padding: 4px 0;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  margin-top: 8px;
+}
+.source-tag a {
+  color: var(--text-secondary);
+  text-decoration: underline;
+}
+
+.followup-chips-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+.followup-chip {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  padding: 8px 16px;
+  border-radius: 20px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: background var(--transition);
+}
+.followup-chip:hover {
+  background: var(--bg-hover);
+}
+
+.message-actions { display: flex; gap: 6px; margin-top: 6px; }
+/* Real design pass 2026-08-23: this is the single most-reused interactive
+   element in the app (Copy/Evidence/Why?/Graph/Export on every chat
+   message, plus every action button across Library/Plugins/Scheduled/
+   Admin's new panels) — a small, deliberate upgrade here reads as polish
+   across the whole product at once. Was a fully transparent ghost button
+   with a flat hover fill; now a faint real surface at rest (so it reads as
+   a button, not bare text) with a genuine lift + soft shadow on hover and
+   a real press-down on click, all on the shared premium easing curve. */
+.action-btn-sm {
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid var(--border-light);
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 5px 10px;
+  border-radius: 8px;
+  font-size: 0.8rem;
+  transition: color var(--transition), background var(--transition),
+              border-color var(--transition), transform var(--transition),
+              box-shadow var(--transition);
+}
+.action-btn-sm:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+  border-color: var(--glass-border);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.28);
+}
+.action-btn-sm:active {
+  transform: translateY(0) scale(0.97);
+  box-shadow: none;
+  transition-duration: 0.08s;
+}
+.action-btn-sm:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none !important;
+  box-shadow: none !important;
+}
+
+/* ── INPUT DOCK AREA ─────────────────────────────────────────────────── */
+.input-area {
+  padding: 0 20px 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.input-box {
+  width: 100%;
+  max-width: 720px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 24px;
+  display: flex;
+  align-items: flex-end;
+  padding: 10px 16px;
+  gap: 8px;
+}
+.input-box textarea {
+  flex: 1;
+  background: none;
+  border: none;
+  color: #fff;
+  font-size: 0.95rem;
+  outline: none;
+  resize: none;
+  max-height: 200px;
+  font-family: var(--font-sans);
+}
+/* Real accessibility gap found via live keyboard-nav audit 2026-08-31: this
+   is the main chat composer -- the single most-used control in the entire
+   app -- and it had zero visible focus indicator for keyboard users, for the
+   same specificity reason as .sidebar-search-box above. */
+.input-box textarea:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.send-btn {
+  background: #fff;
+  border: none;
+  color: #000;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.send-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+
+/* ── ARTIFACT DRAWER ─────────────────────────────────────────────────── */
+.artifact-drawer, .inspector-drawer {
+  width: 420px;
+  min-width: 420px;
+  background: var(--glass-bg-strong);
+  backdrop-filter: blur(var(--glass-blur)) saturate(140%);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(140%);
+  border-left: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transition: width 0.2s var(--ease-smooth), min-width 0.2s var(--ease-smooth);
+}
+/* Real gap found via UI/UX polish pass 2026-08-23: these drawers (all 13
+   real panels — Decisions/Risks/Projects/Library/Plugins/Admin.../etc. —
+   route through .inspector-drawer) toggle visible via the shared .hidden
+   class, which is display:none — a property CSS transitions cannot animate,
+   so opening one always snapped instantly into place with zero motion. A
+   plain keyframe animation on the *visible* state still plays correctly the
+   moment display switches away from none, without touching how .hidden
+   itself works anywhere else. Respects the existing global
+   prefers-reduced-motion rule above automatically (animation-duration is
+   forced to ~0 there for every element, this one included). */
+.artifact-drawer:not(.hidden), .inspector-drawer:not(.hidden) {
+  animation: drawerSlideIn 0.32s var(--ease-smooth);
+}
+@keyframes drawerSlideIn {
+  from { transform: translateX(28px); opacity: 0; }
+  to   { transform: translateX(0);    opacity: 1; }
+}
+.artifact-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.artifact-title-group { display: flex; flex-direction: column; gap: 2px; }
+.artifact-type-badge {
+  font-size: 0.72rem;
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 600;
+}
+.artifact-header h3 {
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.artifact-tab-bar {
+  display: flex;
+  gap: 2px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.art-tab {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  padding: 6px 14px;
+  border-radius: 6px;
+  font-size: 0.82rem;
+  cursor: pointer;
+  transition: background var(--transition), color var(--transition);
+}
+.art-tab:hover { background: var(--bg-hover); color: var(--text-primary); }
+.art-tab.active { background: var(--bg-input); color: #fff; font-weight: 500; }
+.artifact-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+  font-size: 0.88rem;
+  line-height: 1.6;
+  color: var(--text-secondary);
+}
+.artifact-body pre {
+  background: #171717;
+  padding: 12px;
+  border-radius: 8px;
+  overflow-x: auto;
+  font-size: 0.85rem;
+  font-family: var(--font-mono);
+}
+.artifact-body h3 { font-size: 1rem; color: var(--text-primary); margin-bottom: 8px; }
+
+/* ── ARTIFACT GALLERY (card grid, Claude.ai-style) ──────────────────── */
+#artifact-gallery-view, #artifact-detail-view { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+#artifact-gallery-view.hidden, #artifact-detail-view.hidden { display: none; }
+
+.artifact-count-badge {
+  position: absolute;
+  top: 2px; right: 2px;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 3px;
+  border-radius: 8px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 0.62rem;
+  font-weight: 700;
+  line-height: 15px;
+  text-align: center;
+}
+.artifact-count-badge.hidden { display: none; }
+
+.artifact-back-btn {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+  cursor: pointer;
+  padding: 0;
+  margin-bottom: 2px;
+  text-align: left;
+  transition: color var(--transition);
+}
+.artifact-back-btn:hover { color: #fff; }
+
+.artifact-gallery-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  align-content: start;
+}
+
+.artifact-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  transition: background var(--transition), border-color var(--transition);
+  min-height: 96px;
+}
+.artifact-card:hover { background: var(--bg-hover); border-color: #4a4a4a; }
+.artifact-card-icon { font-size: 1.3rem; }
+.artifact-card-title {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.artifact-card-meta {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin-top: auto;
+}
+
+.artifact-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 8px;
+  padding: 40px 20px;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  grid-column: 1 / -1;
+}
+.artifact-empty-state .icon { font-size: 1.8rem; }
+
+/* Inline artifact chip attached to a chat message when it produced an artifact */
+.message-artifact-chip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 14px;
+  margin-top: 10px;
+  cursor: pointer;
+  max-width: 320px;
+  transition: background var(--transition), border-color var(--transition);
+}
+.message-artifact-chip:hover { background: var(--bg-hover); border-color: #4a4a4a; }
+.message-artifact-chip .chip-icon { font-size: 1.15rem; }
+.message-artifact-chip .chip-text { display: flex; flex-direction: column; gap: 1px; overflow: hidden; }
+.message-artifact-chip .chip-title { font-size: 0.82rem; font-weight: 600; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.message-artifact-chip .chip-meta { font-size: 0.68rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.03em; }
+
+/* ── MODALS ──────────────────────────────────────────────────────────── */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(8, 9, 11, 0.6);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+  animation: overlayFadeIn 0.18s var(--ease-smooth);
+}
+@keyframes overlayFadeIn { from { opacity: 0; } to { opacity: 1; } }
+.modal-card {
+  background: var(--glass-bg-strong);
+  backdrop-filter: blur(var(--glass-blur)) saturate(140%);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(140%);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius);
+  padding: 20px;
+  min-width: 450px;
+  max-width: 600px;
+  max-height: 80vh;
+  overflow-y: auto;
+  box-shadow: 0 24px 60px rgba(0,0,0,0.5), var(--glass-highlight);
+  animation: modalPopIn 0.24s var(--ease-smooth);
+}
+@keyframes modalPopIn {
+  from { transform: scale(0.94) translateY(8px); opacity: 0; }
+  to   { transform: scale(1) translateY(0);       opacity: 1; }
+}
+.modal-card > div:first-child {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+/* ── TOAST ───────────────────────────────────────────────────────────── */
+.toast {
+  position: fixed;
+  bottom: 80px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #2f2f2f;
+  color: #fff;
+  border: 1px solid #383838;
+  padding: 10px 20px;
+  border-radius: 10px;
+  font-size: 0.85rem;
+  z-index: 9999;
+  transition: opacity 0.3s;
+}
+
+.hidden { display: none !important; }
+
+/* ─── File Upload Button ─────────────────────────────────────── */
+.upload-btn {
+  display: flex; align-items: center; justify-content: center;
+  width: 34px; height: 34px; min-width: 34px;
+  background: transparent; border: none; cursor: pointer;
+  color: var(--text-muted); border-radius: 8px;
+  transition: color var(--transition), background var(--transition);
+  margin-right: 2px;
+}
+.upload-btn:hover {
+  color: var(--accent);
+  background: rgba(16, 163, 127, 0.1);
+}
+
+/* ─── Dotted Generating Animation ───────────────────────────────────── */
+.typing-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: 8px;
+  vertical-align: middle;
+}
+.typing-dots .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  display: inline-block;
+  animation: dotPulse 1.2s infinite ease-in-out;
+}
+.typing-dots .dot:nth-child(2) { animation-delay: 0.2s; }
+.typing-dots .dot:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes dotPulse {
+  0%, 80%, 100% { transform: scale(0.5); opacity: 0.3; }
+  40%           { transform: scale(1.1); opacity: 1; }
+}
+
+@keyframes bounce {
+  0%, 80%, 100% { transform: translateY(0); opacity: 0.4; }
+  40%           { transform: translateY(-6px); opacity: 1; }
+}
+
+.cursor-blink {
+  display: none;
+}
+
+
+/* ─── Confidence Badge ───────────────────────────────────────────── */
+.confidence-badge {
+  font-size: 0.72rem !important;
+  padding: 2px 8px !important;
+  border-radius: 20px !important;
+  border: 1px solid rgba(255,255,255,0.08) !important;
+  background: rgba(255,255,255,0.04) !important;
+  cursor: default !important;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+}
+.confidence-badge:hover {
+  background: rgba(255,255,255,0.07) !important;
+}
+
+/* ─── Export Button ──────────────────────────────────────────────── */
+.export-btn {
+  font-size: 0.78rem;
+}
+
+/* ─── Mobile Responsive ──────────────────────────────────────────── */
+@media (max-width: 768px) {
+  html, body { overflow: auto; }
+
+  /* Sidebar slides off-screen on mobile */
+  .sidebar {
+    position: fixed;
+    left: 0; top: 0; bottom: 0;
+    z-index: 200;
+    width: 80vw !important;
+    min-width: 0 !important;
+    max-width: 300px;
+    transform: translateX(-100%);
+    transition: transform 0.25s ease;
+    box-shadow: 4px 0 24px rgba(0,0,0,0.5);
+  }
+  .sidebar.mobile-open {
+    transform: translateX(0);
+  }
+  .sidebar.collapsed {
+    transform: translateX(-100%);
+  }
+  /* Overlay when sidebar open */
+  .sidebar-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.5);
+    z-index: 199;
+  }
+  .sidebar-overlay.active { display: block; }
+
+  /* Real bug found via live UI audit 2026-08-21: the artifact/inspector drawers
+     (Why this answer?, Knowledge Graph, Execution Timeline, Artifacts) had a
+     fixed 420px width with no mobile override at all — wider than most phone
+     screens, forcing horizontal overflow/clipping. Full-screen overlay on
+     mobile instead, matching how the sidebar already handles this. */
+  .artifact-drawer, .inspector-drawer {
+    position: fixed;
+    inset: 0;
+    width: 100vw !important;
+    min-width: 0 !important;
+    z-index: 250;
+  }
+
+  /* Main content takes full width.
+     Real bug found via live UI audit 2026-08-21: these selectors (.main-content,
+     .top-bar, .header-bar) never matched anything — the real elements are
+     .main-area and .topbar. The header padding rule in particular had a real,
+     visible effect: mobile phones kept the full 20px desktop side-padding on
+     the topbar, cramping the model selector and action icons on small screens. */
+  .main-area, #main-area {
+    width: 100vw !important;
+    min-width: 0 !important;
+  }
+
+  /* Smaller header */
+  .topbar {
+    padding: 8px 12px !important;
+  }
+  /* Same fixed-icon overlap fix as the desktop rule above, re-applied here
+     since this block's own !important would otherwise win and reintroduce
+     the clipping specifically on narrow screens. */
+  .sidebar.collapsed ~ .main-area .topbar {
+    padding-left: 96px !important;
+  }
+
+  /* Messages fill screen */
+  .messages-area, #chat-scroll-area {
+    padding: 12px 8px !important;
+  }
+
+  .message {
+    padding: 10px 12px !important;
+    font-size: 0.9rem !important;
+    max-width: 100% !important;
+  }
+
+  /* Input area stacks vertically */
+  .input-area, .input-wrapper, #input-bar {
+    padding: 8px !important;
+    gap: 6px !important;
+    flex-wrap: wrap !important;
+  }
+  #prompt-textarea {
+    font-size: 0.9rem !important;
+    min-height: 44px !important;
+  }
+
+  /* Send button stays visible */
+  #send-btn {
+    min-width: 44px !important;
+    min-height: 44px !important;
+  }
+
+  /* Action buttons wrap on mobile */
+  .message-actions {
+    flex-wrap: wrap !important;
+    gap: 4px !important;
+  }
+  .action-btn-sm {
+    font-size: 0.72rem !important;
+    padding: 3px 7px !important;
+  }
+
+  /* Chips scale down */
+  .chip, .followup-chip {
+    font-size: 0.8rem !important;
+    padding: 6px 12px !important;
+  }
+
+  /* Model selector */
+  #model-select { max-width: 130px !important; font-size: 0.78rem !important; }
+
+  /* Welcome hero */
+  .welcome-hero h1, #welcome-hero h1 { font-size: 1.4rem !important; }
+  .chips-row, .chip-row { flex-wrap: wrap !important; justify-content: center !important; }
+
+  /* Inspector / modal.
+     Real bug found via live UI audit 2026-08-22: .modal-card has
+     min-width: 450px, which still wins over this width:95vw rule on any
+     screen narrower than 450px (min-width always overrides width) — the
+     upload modal genuinely overflowed a real phone viewport (375px) despite
+     this rule already existing. Overriding min-width too. */
+  .inspector-modal-inner, [id$="-modal"] > div {
+    width: 95vw !important;
+    min-width: 0 !important;
+    max-height: 80vh !important;
+    overflow-y: auto;
+  }
+}
+
+@media (max-width: 480px) {
+  .message { font-size: 0.85rem !important; }
+  /* Real bug found via live UI audit 2026-08-21: ".top-bar .model-bar" never
+     matched anything (wrong class names) — the system-health and project-memory
+     indicators still crowded the topbar on very small screens. Hiding the
+     real elements instead. */
+  #system-health-indicator, #project-memory-indicator { display: none !important; }
+  #prompt-textarea { font-size: 0.85rem !important; }
+}
+
+/* ── AUTH GATE ───────────────────────────────────────────────────────── */
+body.unauthenticated #sidebar,
+body.unauthenticated #main-area { display: none; }
+/* Bridges the gap between the pre-paint inline script (index.html <body>) and
+   app.js's real authGate() logic running moments later — without this, a
+   returning user with a real token would see the auth-gate flash on top of
+   the newly-revealed app for one frame, since the gate's own "hidden" class
+   isn't added until app.js actually runs. */
+body.has-token-preboot #auth-gate { display: none; }
+
+.auth-gate {
+  position: fixed; inset: 0; z-index: 10000;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--bg-primary);
+}
+.auth-gate.hidden { display: none; }
+
+.auth-card {
+  width: 100%; max-width: 380px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 32px 28px;
+}
+.auth-brand {
+  font-size: 1.15rem; font-weight: 600; color: var(--text-primary);
+  text-align: center; margin-bottom: 24px;
+}
+.auth-tabs {
+  display: flex; gap: 4px; margin-bottom: 20px;
+  background: var(--bg-input); border-radius: 8px; padding: 4px;
+}
+.auth-tab {
+  flex: 1; padding: 8px 0; border: none; background: transparent;
+  color: var(--text-secondary); font-size: 0.85rem; font-weight: 500;
+  border-radius: 6px; cursor: pointer; transition: var(--transition);
+}
+.auth-tab.active { background: var(--bg-active); color: var(--text-primary); }
+.auth-tab:hover:not(.active) { color: var(--text-primary); }
+
+.auth-form.hidden { display: none; }
+.auth-label {
+  display: block; font-size: 0.78rem; color: var(--text-secondary);
+  margin: 14px 0 6px;
+}
+.auth-label:first-child { margin-top: 0; }
+.auth-input {
+  width: 100%; padding: 10px 12px;
+  background: var(--bg-input); border: 1px solid var(--border);
+  border-radius: 8px; color: var(--text-primary); font-size: 0.9rem;
+  font-family: var(--font-sans);
+}
+.auth-input:focus { outline: none; border-color: var(--accent); }
+.auth-submit-btn {
+  width: 100%; margin-top: 22px; padding: 11px 0;
+  background: var(--accent); color: #fff; border: none;
+  border-radius: 8px; font-size: 0.9rem; font-weight: 600;
+  cursor: pointer; transition: var(--transition);
+}
+.auth-submit-btn:hover { opacity: 0.9; }
+.auth-submit-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+.auth-error {
+  margin-top: 16px; padding: 10px 12px;
+  background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 8px; color: #f87171; font-size: 0.82rem;
+}
+.auth-error.hidden { display: none; }
+
+.auth-invite-banner {
+  margin-bottom: 18px; padding: 10px 12px;
+  background: rgba(16, 163, 127, 0.1); border: 1px solid rgba(16, 163, 127, 0.3);
+  border-radius: 8px; color: var(--accent); font-size: 0.82rem;
+}
+.auth-invite-banner.hidden { display: none; }
+
+/* Honestly-disabled nav items — real fix for buttons that used to fake success.
+   Shared with .menu-dropdown-item.is-disabled (the three-dots menu's Share
+   Conversation / Admin Dashboard items, fixed 2026-08-21 for the same reason). */
+.nav-item-btn.is-disabled,
+.menu-dropdown-item.is-disabled {
+  opacity: 0.45; cursor: not-allowed;
+  display: flex; align-items: center; gap: 6px;
+}
+.nav-item-btn.is-disabled:hover,
+.menu-dropdown-item.is-disabled:hover { background: none; }
+.soon-badge {
+  margin-left: auto; font-size: 0.65rem; letter-spacing: 0.03em; text-transform: uppercase;
+  color: var(--text-muted); border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px;
+}
+

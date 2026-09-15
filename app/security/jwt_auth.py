@@ -30,7 +30,15 @@ class JWTAuthEngine:
         tenant_id: str,
         user_id: str,
         email: str,
-        role: str = "admin",
+        # Real hardening found via code audit 2026-09-11: this function mints
+        # real, signed JWTs -- a durable credential valid until expiry, not
+        # just a single function call's in-memory parameter. Both real
+        # callers (signup, login in app/api/auth.py) already explicitly pass
+        # a real role, so this default is currently unreachable, but a token-
+        # issuing function's unreachable default is exactly the kind of thing
+        # that becomes reachable the moment someone adds a new caller without
+        # reading this far. Fail closed to the lowest privilege.
+        role: str = "member",
         expires_in_seconds: int = DEFAULT_EXPIRATION_SECONDS,
     ) -> str:
         header = {"alg": JWT_ALGORITHM, "typ": "JWT"}

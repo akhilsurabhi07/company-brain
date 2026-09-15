@@ -1,19 +1,21 @@
-class OCRProcessor:
-    """
-    Image and Diagram Optical Character Recognition (OCR) Processor.
-    Extracts embedded text from screenshots, whiteboards, slides, and diagrams attached in apps.
-    """
+"""
+DEPRECATED — superseded 2026-08-20 by real OCR in app/api/upload_router.py.
 
-    @staticmethod
-    def extract_text_from_image(image_bytes: bytes, mime_type: str = "image/png") -> str:
-        """
-        Parses text from image bytes.
-        Uses fallback OCR engine (Tesseract or Vision API wrapper).
-        """
-        if not image_bytes:
-            return ""
-            
-        # Extensible stub ready for Tesseract / AWS Textract integration
-        return f"[OCR Processed Image ({len(image_bytes)} bytes, {mime_type})]"
+This module used to be a hardcoded stub: extract_text_from_image() returned
+f"[OCR Processed Image ({len} bytes...)]" regardless of what was in the image, and
+had zero callers anywhere in the codebase (confirmed via grep before this change).
 
-ocr_processor = OCRProcessor()
+Real, self-hosted OCR (EasyOCR — same self-hosted-model philosophy as BGEEmbedder;
+no external API, no system Tesseract binary) now lives in
+app.api.upload_router.ocr_image_bytes() / ocr_scanned_pdf(), wired into the live
+POST /api/v1/upload/document endpoint. Use those instead of this file.
+
+Left in place (not deleted) so any historical import of this module fails loudly
+with a clear pointer rather than silently vanishing.
+"""
+
+raise ImportError(
+    "app.processors.ocr_processor is deprecated and no longer implements OCR. "
+    "Use app.api.upload_router.ocr_image_bytes() / ocr_scanned_pdf() instead — "
+    "see the module docstring in this file for why."
+)

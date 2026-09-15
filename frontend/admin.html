@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Company Brain — Admin Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Inter', sans-serif; background: #0d0d0d; color: #ececec; min-height: 100vh; }
+
+    .topbar {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 14px 28px; background: #171717; border-bottom: 1px solid #2a2a2a;
+      position: sticky; top: 0; z-index: 100;
+    }
+    .topbar h1 { font-size: 1.1rem; font-weight: 600; color: #fff; display: flex; align-items: center; gap: 10px; }
+    .topbar h1 span { color: #10a37f; }
+    .back-btn {
+      background: #2f2f2f; border: 1px solid #383838; color: #ececec;
+      padding: 7px 16px; border-radius: 8px; cursor: pointer; font-size: 0.85rem;
+      text-decoration: none; display: inline-flex; align-items: center; gap: 6px;
+      transition: background 0.2s;
+    }
+    .back-btn:hover { background: #383838; }
+
+    .dashboard { max-width: 1100px; margin: 0 auto; padding: 28px 20px; }
+
+    /* ── Stat Cards ── */
+    .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 28px; }
+    .stat-card {
+      background: #171717; border: 1px solid #2a2a2a; border-radius: 12px;
+      padding: 20px 22px; position: relative; overflow: hidden;
+    }
+    .stat-card::before {
+      content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+      background: linear-gradient(90deg, #10a37f, #3b82f6);
+    }
+    .stat-label { font-size: 0.78rem; color: #8e8e8e; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 8px; }
+    .stat-value { font-size: 2rem; font-weight: 700; color: #fff; }
+    .stat-sub   { font-size: 0.78rem; color: #10a37f; margin-top: 4px; }
+
+    /* ── Section Cards ── */
+    .section-card {
+      background: #171717; border: 1px solid #2a2a2a; border-radius: 12px; padding: 22px; margin-bottom: 20px;
+    }
+    .section-title { font-size: 0.9rem; font-weight: 600; color: #fff; margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
+
+    /* ── Source Table ── */
+    .source-table { width: 100%; border-collapse: collapse; }
+    .source-table th, .source-table td { text-align: left; padding: 10px 14px; font-size: 0.85rem; border-bottom: 1px solid #2a2a2a; }
+    .source-table th { color: #8e8e8e; font-weight: 500; font-size: 0.78rem; text-transform: uppercase; }
+    .source-table td { color: #ececec; }
+    .source-bar-cell { min-width: 180px; }
+    .source-bar { height: 6px; border-radius: 3px; background: linear-gradient(90deg, #10a37f, #3b82f6); transition: width 0.6s; }
+
+    /* ── Recent Docs List ── */
+    .doc-item { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid #1e1e1e; }
+    .doc-item:last-child { border-bottom: none; }
+    .doc-icon { font-size: 1.2rem; width: 32px; text-align: center; }
+    .doc-name  { font-size: 0.85rem; color: #ececec; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .doc-date  { font-size: 0.75rem; color: #666; white-space: nowrap; }
+
+    /* ── Upload Area ── */
+    .upload-zone {
+      border: 2px dashed #2a2a2a; border-radius: 12px; padding: 32px; text-align: center;
+      transition: border-color 0.2s, background 0.2s; cursor: pointer;
+    }
+    .upload-zone:hover { border-color: #10a37f; background: rgba(16,163,127,0.04); }
+    .upload-zone p { color: #8e8e8e; font-size: 0.88rem; margin-top: 8px; }
+    .upload-zone strong { color: #ececec; }
+    .upload-zone-icon { font-size: 2rem; margin-bottom: 6px; }
+
+    .upload-form-inline { display: flex; gap: 10px; margin-top: 14px; justify-content: center; flex-wrap: wrap; }
+    .upload-form-inline input[type="file"] { display: none; }
+    .btn-primary {
+      background: #10a37f; color: #fff; border: none; padding: 9px 20px; border-radius: 8px;
+      cursor: pointer; font-size: 0.88rem; font-weight: 500; transition: background 0.2s;
+    }
+    .btn-primary:hover { background: #0d8f6f; }
+
+    /* ── Refresh ── */
+    .refresh-btn {
+      background: transparent; border: 1px solid #383838; color: #8e8e8e;
+      padding: 5px 12px; border-radius: 6px; cursor: pointer; font-size: 0.78rem;
+      margin-left: auto; transition: all 0.2s;
+    }
+    .refresh-btn:hover { border-color: #10a37f; color: #10a37f; }
+
+    /* ── Badge ── */
+    .badge {
+      font-size: 0.72rem; padding: 2px 8px; border-radius: 4px; font-weight: 500;
+      background: rgba(16,163,127,0.15); color: #10a37f;
+    }
+
+    /* ── Status indicator ── */
+    .status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+    .status-dot.green { background: #10a37f; box-shadow: 0 0 6px #10a37f88; }
+    .status-dot.yellow { background: #f59e0b; }
+    .status-dot.red { background: #ef4444; }
+
+    .toast {
+      position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+      background: #2f2f2f; color: #fff; border: 1px solid #383838;
+      padding: 10px 20px; border-radius: 10px; font-size: 0.85rem; z-index: 9999;
+      display: none;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .loading { opacity: 0.5; }
+  </style>
+</head>
+<body>
+
+<!-- Top Bar -->
+<div class="topbar">
+  <h1>⚙️ Company Brain <span>Admin Dashboard</span></h1>
+  <a href="/" class="back-btn">← Back to Chat</a>
+</div>
+
+<div class="dashboard">
+
+  <!-- Stat Cards -->
+  <div class="stats-grid" id="stats-grid">
+    <div class="stat-card">
+      <div class="stat-label">Total Documents</div>
+      <div class="stat-value" id="stat-total">—</div>
+      <div class="stat-sub" id="stat-total-sub">Loading...</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Data Sources</div>
+      <div class="stat-value" id="stat-sources">—</div>
+      <div class="stat-sub">GitHub · Slack · Jira · Drive</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">System Status</div>
+      <div class="stat-value" style="font-size:1.4rem; display:flex; align-items:center; gap:8px; margin-top:4px;">
+        <span class="status-dot green" id="status-dot"></span>
+        <span id="status-text" style="font-size:1rem;">Checking...</span>
+      </div>
+      <div class="stat-sub" id="status-sub">Connecting to API...</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Embedding Model</div>
+      <div class="stat-value" style="font-size:1rem; margin-top:6px;">BGE-Large</div>
+      <div class="stat-sub">1024-dim · SentenceTransformers</div>
+    </div>
+    <div class="stat-card">
+      <!-- Real bug found+fixed 2026-08-23: this card claimed a single fixed
+           "Groq Llama 3.3" LLM engine — the real system is a multi-provider,
+           health-aware auto-router (OpenAI/Groq/Gemini/Anthropic/HuggingFace/
+           Local) that fails over between them per turn. A single hardcoded
+           name here was actively misleading, not just imprecise. -->
+      <div class="stat-label">LLM Engine</div>
+      <div class="stat-value" style="font-size:0.95rem; margin-top:6px;">Multi-Provider</div>
+      <div class="stat-sub">Auto-routed · health-based failover</div>
+    </div>
+  </div>
+
+  <!-- Team & Roles -->
+  <div class="section-card">
+    <div class="section-title">
+      👥 Team &amp; Roles
+      <button class="refresh-btn" onclick="loadUsers()">↻ Refresh</button>
+    </div>
+    <table class="source-table">
+      <thead>
+        <tr><th>Name</th><th>Email</th><th>Role</th><th></th></tr>
+      </thead>
+      <tbody id="users-tbody">
+        <tr><td colspan="4" style="color:#666; text-align:center; padding:20px;">Loading...</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Recent Activity -->
+  <div class="section-card">
+    <div class="section-title">
+      🕘 Recent Activity
+      <button class="refresh-btn" onclick="loadActivity()">↻ Refresh</button>
+    </div>
+    <div id="activity-list">
+      <p style="color:#666; font-size:0.85rem;">Loading recent activity...</p>
+    </div>
+  </div>
+
+  <!-- Document Upload Section -->
+  <div class="section-card">
+    <div class="section-title">📎 Upload Documents to Company Brain</div>
+    <div class="upload-zone" id="upload-zone" onclick="document.getElementById('admin-file-input').click()">
+      <div class="upload-zone-icon">📄</div>
+      <strong>Click to upload</strong> or drag & drop
+      <p>PDF, DOCX, TXT, CSV, XLSX, MD, JSON, YAML • Max 10MB</p>
+      <input type="file" id="admin-file-input" accept=".pdf,.docx,.txt,.csv,.xlsx,.md,.json,.yaml"
+             onchange="adminUpload(event)" multiple>
+    </div>
+    <div id="upload-status" style="margin-top:12px; font-size:0.85rem; color:#10a37f; text-align:center;"></div>
+  </div>
+
+  <!-- Source Breakdown -->
+  <div class="section-card">
+    <div class="section-title">
+      📊 Documents by Source
+      <button class="refresh-btn" onclick="loadStats()">↻ Refresh</button>
+    </div>
+    <table class="source-table">
+      <thead>
+        <tr>
+          <th>Source</th>
+          <th>Documents</th>
+          <th style="min-width:200px;">Distribution</th>
+        </tr>
+      </thead>
+      <tbody id="sources-tbody">
+        <tr><td colspan="3" style="color:#666; text-align:center; padding:20px;">Loading...</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Recent Documents -->
+  <div class="section-card">
+    <div class="section-title">🕒 Recently Ingested Documents</div>
+    <div id="recent-docs-list">
+      <p style="color:#666; font-size:0.85rem;">Loading recent documents...</p>
+    </div>
+  </div>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+  // Real bug found+fixed 2026-08-23: this whole page already called real,
+  // auth-gated endpoints (/api/v1/upload/stats, /api/v1/upload/document) but
+  // sent no Authorization header at all — every real call 401'd. It was also
+  // never linked from the main app's nav (that "Admin Dashboard" item was a
+  // hardcoded "Soon" placeholder). Neither problem was visible without
+  // actually trying to use this page as a real signed-in user.
+  const AUTH_TOKEN = localStorage.getItem("auth_token");
+  const TENANT_ID  = localStorage.getItem("tenant_id") || "00000000-0000-0000-0000-000000000001";
+
+  if (!AUTH_TOKEN) {
+    // No real session — send them to the real login/signup gate instead of
+    // rendering a page that can only 401.
+    location.href = "/";
+  }
+
+  function authFetch(url, options) {
+    options = options || {};
+    const headers = Object.assign({}, options.headers || {}, { "Authorization": "Bearer " + AUTH_TOKEN });
+    return fetch(url, Object.assign({}, options, { headers })).then((res) => {
+      if (res.status === 401) {
+        localStorage.removeItem("auth_token");
+        location.href = "/";
+      }
+      return res;
+    });
+  }
+
+  // Real, if only cosmetic, admin gate: decodes the real JWT's own role claim
+  // (no signature check needed here — this is UX only, the actual security
+  // boundary is the server-side 403 every /api/v1/admin/* endpoint already
+  // enforces) so a non-admin sees an honest "admins only" message instead of
+  // a dashboard that will just 403 on every real action.
+  function jwtRole() {
+    try {
+      const payload = JSON.parse(atob(AUTH_TOKEN.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")));
+      return payload.role || null;
+    } catch { return null; }
+  }
+  const IS_ADMIN = !!AUTH_TOKEN && jwtRole() === "admin";
+  if (AUTH_TOKEN && !IS_ADMIN) {
+    document.querySelector(".dashboard").innerHTML = `
+      <div class="section-card" style="text-align:center; padding:48px 24px;">
+        <div style="font-size:2rem; margin-bottom:10px;">🔒</div>
+        <div style="font-weight:600; margin-bottom:6px;">Admins only</div>
+        <div style="color:#8e8e8e; font-size:0.88rem;">Your account doesn't have admin access to this workspace.</div>
+      </div>`;
+  }
+
+  function showToast(msg) {
+    const t = document.getElementById("toast");
+    t.textContent = msg;
+    t.style.display = "block";
+    clearTimeout(t._t);
+    t._t = setTimeout(() => t.style.display = "none", 3000);
+  }
+
+  function sourceIcon(src) {
+    const icons = {
+      GITHUB: "🐙", SLACK: "💬", JIRA: "📋", DRIVE: "📁", GOOGLE_DRIVE: "📁",
+      WHATSAPP: "💚", TEAMS: "💙", UPLOAD: "📎", DEFAULT: "📄"
+    };
+    const key = (src || "").toUpperCase().replace(/\s/g, "_");
+    return icons[key] || icons.DEFAULT;
+  }
+
+  async function loadStats() {
+    try {
+      const res  = await authFetch(`/api/v1/upload/stats?tenant_id=${TENANT_ID}`);
+      const data = await res.json();
+
+      // Update stat cards
+      document.getElementById("stat-total").textContent     = data.total_documents.toLocaleString();
+      document.getElementById("stat-total-sub").textContent = `Across ${data.sources.length} sources`;
+      document.getElementById("stat-sources").textContent   = data.sources.length;
+
+      // Source table
+      const tbody = document.getElementById("sources-tbody");
+      const maxCount = Math.max(...data.sources.map(s => s.count), 1);
+      tbody.innerHTML = data.sources.length === 0
+        ? `<tr><td colspan="3" style="color:#666; text-align:center; padding:20px;">No documents ingested yet.</td></tr>`
+        : data.sources.map(s => {
+            const pct = Math.round((s.count / maxCount) * 100);
+            return `<tr>
+              <td>${sourceIcon(s.source)} <span style="margin-left:6px;">${s.source || "Unknown"}</span></td>
+              <td><span class="badge">${s.count.toLocaleString()}</span></td>
+              <td class="source-bar-cell"><div class="source-bar" style="width:${pct}%;"></div></td>
+            </tr>`;
+          }).join("");
+
+      // Recent docs
+      const recentEl = document.getElementById("recent-docs-list");
+      recentEl.innerHTML = data.recent_documents.length === 0
+        ? `<p style="color:#666; font-size:0.85rem;">No documents yet.</p>`
+        : data.recent_documents.map(d => {
+            const date = new Date(d.created_at).toLocaleString();
+            const src  = (d.title || "").split("]")[0].replace("[", "").trim();
+            return `<div class="doc-item">
+              <div class="doc-icon">${sourceIcon(src)}</div>
+              <div class="doc-name" title="${d.title}">${d.title}</div>
+              <div class="doc-date">${date}</div>
+            </div>`;
+          }).join("");
+
+    } catch (err) {
+      console.error("Stats load failed:", err);
+    }
+  }
+
+  const ROLE_OPTIONS = ["admin", "member"];
+
+  async function loadUsers() {
+    const tbody = document.getElementById("users-tbody");
+    if (!tbody) return;
+    try {
+      const res  = await authFetch(`/api/v1/admin/users?tenant_id=${TENANT_ID}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      tbody.innerHTML = data.users.length === 0
+        ? `<tr><td colspan="4" style="color:#666; text-align:center; padding:20px;">No team members yet.</td></tr>`
+        : data.users.map(u => `
+            <tr>
+              <td>${u.full_name || "—"}</td>
+              <td>${u.email}</td>
+              <td>
+                <select class="role-select" data-user-id="${u.id}" style="background:#1e1e1e; color:#ececec; border:1px solid #383838; border-radius:6px; padding:4px 8px; font-size:0.82rem;">
+                  ${ROLE_OPTIONS.map(r => `<option value="${r}" ${r === u.role ? "selected" : ""}>${r}</option>`).join("")}
+                </select>
+              </td>
+              <td><span style="color:#666; font-size:0.75rem;">${u.department || ""}</span></td>
+            </tr>`).join("");
+      tbody.querySelectorAll(".role-select").forEach(sel => {
+        sel.addEventListener("change", () => changeRole(sel.dataset.userId, sel.value, sel));
+      });
+    } catch (err) {
+      tbody.innerHTML = `<tr><td colspan="4" style="color:#ef4444; text-align:center; padding:20px;">Could not load team (${err.message}).</td></tr>`;
+    }
+  }
+
+  async function changeRole(userId, newRole, selectEl) {
+    const prev = selectEl.dataset.prevValue || newRole;
+    try {
+      const res = await authFetch(`/api/v1/admin/users/${userId}/role?tenant_id=${TENANT_ID}&role=${newRole}`, { method: "PATCH" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
+      selectEl.dataset.prevValue = newRole;
+      showToast(`Role updated to ${newRole}`);
+    } catch (err) {
+      selectEl.value = prev;
+      showToast(`❌ ${err.message}`);
+    }
+  }
+
+  async function loadActivity() {
+    const el = document.getElementById("activity-list");
+    if (!el) return;
+    try {
+      const res  = await authFetch(`/api/v1/admin/activity?tenant_id=${TENANT_ID}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      el.innerHTML = data.activity.length === 0
+        ? `<p style="color:#666; font-size:0.85rem;">No activity yet — uploads and ingestion will show up here.</p>`
+        : data.activity.map(a => `
+            <div class="doc-item">
+              <div class="doc-icon">${sourceIcon(a.source_app)}</div>
+              <div class="doc-name">${a.action.replace(/_/g, " ")} · ${a.items_processed} item(s) · ${a.source_app}</div>
+              <div class="doc-date">${new Date(a.created_at).toLocaleString()}</div>
+            </div>`).join("");
+    } catch (err) {
+      el.innerHTML = `<p style="color:#ef4444; font-size:0.85rem;">Could not load activity (${err.message}).</p>`;
+    }
+  }
+
+  async function checkHealth() {
+    try {
+      const res  = await fetch("/healthz");
+      const data = await res.json();
+      const ok   = data.status === "healthy";
+      document.getElementById("status-dot").className = `status-dot ${ok ? "green" : "red"}`;
+      document.getElementById("status-text").textContent = ok ? "Online" : "Degraded";
+      document.getElementById("status-sub").textContent  = ok ? "All systems operational" : "Check server logs";
+    } catch {
+      document.getElementById("status-dot").className = "status-dot red";
+      document.getElementById("status-text").textContent = "Offline";
+      document.getElementById("status-sub").textContent  = "Cannot reach API";
+    }
+  }
+
+  async function adminUpload(event) {
+    const files = Array.from(event.target.files);
+    if (!files.length) return;
+    const statusEl = document.getElementById("upload-status");
+
+    for (const file of files) {
+      statusEl.textContent = `⏳ Uploading ${file.name}...`;
+      try {
+        const formData = new FormData();
+        formData.append("file", file);
+        formData.append("tenant_id", TENANT_ID);
+        formData.append("source_label", "UPLOAD");
+
+        const res  = await authFetch("/api/v1/upload/document", { method: "POST", body: formData });
+        const data = await res.json();
+
+        if (!res.ok) throw new Error(data.detail || "Upload failed");
+        statusEl.textContent = `✅ ${data.message}`;
+        showToast(`✅ ${file.name} ingested!`);
+      } catch (err) {
+        statusEl.style.color = "#ef4444";
+        statusEl.textContent = `❌ ${file.name}: ${err.message}`;
+        showToast(`❌ Upload failed: ${err.message}`);
+      }
+    }
+    event.target.value = "";
+    setTimeout(loadStats, 1500);
+  }
+
+  // Drag & drop support
+  // Real bug found+fixed 2026-08-23: this ran unconditionally, so a
+  // non-admin (whose #upload-zone no longer exists — replaced above by the
+  // "Admins only" message) would hit a real TypeError on page load.
+  const zone = document.getElementById("upload-zone");
+  if (zone) {
+    zone.addEventListener("dragover",  e => { e.preventDefault(); zone.style.borderColor = "#10a37f"; });
+    zone.addEventListener("dragleave", () => zone.style.borderColor = "#2a2a2a");
+    zone.addEventListener("drop", e => {
+      e.preventDefault();
+      zone.style.borderColor = "#2a2a2a";
+      const dt = e.dataTransfer;
+      if (dt.files.length) adminUpload({ target: { files: dt.files, value: "" } });
+    });
+  }
+
+  // Init — only fires for a real, signed-in admin; a non-admin already saw
+  // the "Admins only" message above and none of these elements exist for them.
+  if (IS_ADMIN) {
+    loadStats();
+    checkHealth();
+    loadUsers();
+    loadActivity();
+  }
+</script>
+</body>
+</html>

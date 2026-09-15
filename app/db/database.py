@@ -9,8 +9,8 @@ engine = create_async_engine(
     settings.DATABASE_URL,
     echo=False,
     pool_pre_ping=True,
-    pool_size=10,
-    max_overflow=20,
+    pool_size=100,
+    max_overflow=50,
 )
 
 async_session_factory = sessionmaker(
@@ -28,7 +28,7 @@ async def get_tenant_session(tenant_id: str) -> AsyncGenerator[AsyncSession, Non
     async with async_session_factory() as session:
         # Set the local session variable for RLS policies
         await session.execute(
-            text("SET LOCAL app.current_tenant_id = :tenant_id"),
+            text("SELECT set_config('app.current_tenant_id', :tenant_id, true)"),
             {"tenant_id": str(tenant_id)},
         )
         try:
