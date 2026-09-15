@@ -118,10 +118,21 @@ async def v6a_chat_turn(req: V6AChatTurnRequest, token=Depends(require_authentic
         or "company-brain"
     )
 
+    # Same real fix as /stream below: surface real per-document citations
+    # (from explanation.evidence_used, the actually-retrieved chunks) instead
+    # of a top-level "citations" key that was never set on the real RAG path.
+    _evidence_used = (result.get("explanation") or {}).get("evidence_used") or []
+    citations = []
+    for _e in _evidence_used:
+        _t = _e.get("doc_title")
+        if _t and _t not in citations:  # dedupe: multiple chunks from one doc are one real citation
+            citations.append(_t)
+
     return {
         **result,
         "response_text": response_text,
         "provider": provider,
+        "citations": citations,
         "persona": req.persona.value,
         "mode": req.mode.value,
     }
@@ -207,7 +218,26 @@ async def v6a_chat_stream(req: V6AChatTurnRequest, response: Response, token=Dep
                     "Something went wrong generating a response. Please try asking again."
                 )
 
-            citations       = result.get("citations", [])
+            # Real bug found live 2026-09-15: this read a top-level "citations" key
+            # that conversation_service.py's real RAG-path return dict never sets
+            # (citations only ever existed nested under result["response"]["citations"],
+            # and even that was just a generic per-PROVIDER placeholder like
+            # "Groq (model)" set by the LLM adapter -- never the real per-document
+            # sources that actually grounded the answer). The result: every single
+            # real chat answer sent "citations": [] to the frontend's evidence panel,
+            # regardless of how well-grounded the answer actually was -- on /stream,
+            # the documented real primary path the frontend uses (see this
+            # function's own docstring). explanation_engine.py was already building
+            # exactly the right real data for this (evidence_used: real doc_title
+            # per actually-retrieved chunk) but chat_router.py was never updated to
+            # consume it. Frontend's citations renderer (app.js openInspectorModal)
+            # expects a flat array of title strings, not objects -- match that shape.
+            _evidence_used = (result.get("explanation") or {}).get("evidence_used") or []
+            citations = []
+            for _e in _evidence_used:
+                _t = _e.get("doc_title")
+                if _t and _t not in citations:  # dedupe: multiple chunks from one doc are one real citation
+                    citations.append(_t)
             confidence      = result.get("confidence_score", 0)
             provider_out    = result.get("provider") or req.preferred_provider or "company-brain"
             retrieval_debug = result.get("retrieval_debug")  # only present when req.debug_retrieval was True
